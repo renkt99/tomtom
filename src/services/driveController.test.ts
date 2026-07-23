@@ -1,7 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createDriveController } from './driveController';
 import { makeTrace } from '../core/testUtils';
-import type { RawFix } from '../core/types';
+import { buildCumDist } from '../core/polyline';
+import type { RawFix, Route } from '../core/types';
 import type { PositionSource } from './positionSource';
 
 class StubPositionSource implements PositionSource {
@@ -121,5 +122,105 @@ describe('createDriveController', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+/**
+ * A "stopped" fix near `center`: reports spd=0 (as a real device would once
+ * it estimates you're stationary) but jitters position by ~8m alternating
+ * direction each call, so consecutive fixes still clear acceptFix's 5m
+ * movement-jitter threshold instead of being silently dropped as duplicates.
+ */
+function makeDwellFixSeq(center: { lat: number; lon: number }) {
+  let i = 0;
+  return (t: number): RawFix => {
+    i++;
+    const sign = i % 2 === 0 ? 1 : -1;
+    return { lat: center.lat + sign * 0.00007, lon: center.lon, acc: 5, spd: 0, t };
+  };
+}
+
+function makeRoute(): Route {
+  const polyline = [
+    { lat: 40, lon: -74 },
+    { lat: 40.002, lon: -74.002 } // ~280 m
+  ];
+  const { cumDistM, totalDistM } = buildCumDist(polyline);
+  return {
+    id: 'r1',
+    name: 'auto-stop test route',
+    polyline,
+    cumDistM,
+    totalDistM,
+    corridorM: 75,
+    bestRunId: null,
+    createdAt: 0
+  };
+}
+
+describe('createDriveController auto-stop', () => {
+  it('fires onAutoStop, sets state finished, and stops the source once dwelling at the end (route mode, non-replay)', () => {
+    const route = makeRoute();
+    const source = new StubPositionSource();
+    const stopSpy = vi.spyOn(source, 'stop');
+
+    let autoStopResult: { rawFixes: RawFix[]; startedAt: number } | null = null;
+    const controller = createDriveController(source, route, null, {
+      onAutoStop: (result) => {
+        autoStopResult = result;
+      }
+    });
+
+    controller.start();
+
+    // Drive the whole route quickly.
+    const driveFixes = makeTrace(route.polyline, { speedMs: 15, hz: 1, noiseM: 0 });
+    for (const f of driveFixes) source.push(f);
+
+    expect(controller.state.value).toBe('recording');
+    expect(autoStopResult).toBeNull();
+
+    // Now dwell at the route's end, stopped, for longer than the default
+    // dwellMs (5000ms) — one fix per second.
+    const end = route.polyline[route.polyline.length - 1];
+    const lastT = driveFixes[driveFixes.length - 1].t;
+    const dwellFix = makeDwellFixSeq(end);
+    for (let i = 1; i <= 8; i++) {
+      source.push(dwellFix(lastT + i * 1000));
+      if (controller.state.value === 'finished') break;
+    }
+
+    expect(controller.state.value).toBe('finished');
+    expect(stopSpy).toHaveBeenCalled();
+    expect(autoStopResult).not.toBeNull();
+    expect(autoStopResult!.rawFixes.length).toBeGreaterThan(0);
+  });
+
+  it('does not auto-stop during replay even when dwelling at the end', () => {
+    const route = makeRoute();
+    const source = new StubPositionSource();
+
+    let autoStopCalled = false;
+    const controller = createDriveController(source, route, null, {
+      replay: true,
+      onAutoStop: () => {
+        autoStopCalled = true;
+      }
+    });
+
+    controller.start();
+
+    const driveFixes = makeTrace(route.polyline, { speedMs: 15, hz: 1, noiseM: 0 });
+    for (const f of driveFixes) source.push(f);
+
+    const end = route.polyline[route.polyline.length - 1];
+    const lastT = driveFixes[driveFixes.length - 1].t;
+    const dwellFix = makeDwellFixSeq(end);
+    for (let i = 1; i <= 8; i++) {
+      source.push(dwellFix(lastT + i * 1000));
+    }
+
+    expect(controller.state.value).toBe('recording');
+    expect(autoStopCalled).toBe(false);
   });
 });

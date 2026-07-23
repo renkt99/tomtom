@@ -5,7 +5,8 @@ export type ScreenRoute =
   | { screen: 'new' }
   | { screen: 'detail'; id: string }
   | { screen: 'drive'; id: string; replayRunId: string | null }
-  | { screen: 'drive-new' };
+  | { screen: 'drive-new' }
+  | { screen: 'settings' };
 
 function parseHash(hash: string): ScreenRoute {
   const withoutHash = hash.replace(/^#/, '') || '/';
@@ -16,6 +17,7 @@ function parseHash(hash: string): ScreenRoute {
   if (path === '/' || path === '') return { screen: 'list' };
   if (path === '/new') return { screen: 'new' };
   if (path === '/drive-new') return { screen: 'drive-new' };
+  if (path === '/settings') return { screen: 'settings' };
 
   const detailMatch = path.match(/^\/route\/([^/]+)$/);
   if (detailMatch) return { screen: 'detail', id: detailMatch[1] };

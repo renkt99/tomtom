@@ -27,7 +27,12 @@ export function RouteList() {
 
   return (
     <div class="screen">
-      <h1>TomTom</h1>
+      <div class="screen-header">
+        <h1>TomTom</h1>
+        <a class="link settings-link" href="#/settings" aria-label="Settings" title="Settings">
+          ⚙
+        </a>
+      </div>
       {rows === null ? (
         <p>Loading…</p>
       ) : rows.length === 0 ? (

@@ -51,7 +51,13 @@ function dowAndHour(startedAt: number): { dow: number; hour: number } {
   return { dow: d.getDay(), hour: d.getHours() };
 }
 
-async function recomputeBestRunId(routeId: string): Promise<string | null> {
+/**
+ * Recompute and return the best (fastest, then earliest) valid run id for a
+ * route from the runs currently in the DB. Exported so exportImport.ts can
+ * reuse this exact logic after a merge instead of duplicating "what counts
+ * as best" rules.
+ */
+export async function recomputeBestRunId(routeId: string): Promise<string | null> {
   const runs = await db.runs.where('routeId').equals(routeId).toArray();
   const validRuns = runs.filter((r) => r.valid);
   if (validRuns.length === 0) return null;
@@ -121,7 +127,7 @@ export async function saveRun(
   routeId: string,
   trace: RawFix[],
   startedAt: number,
-  endedBy: 'manual' | 'seed'
+  endedBy: 'manual' | 'seed' | 'auto'
 ): Promise<{ run: Run; isNewBest: boolean }> {
   const route = await db.routes.get(routeId);
   if (!route) throw new Error(`Route not found: ${routeId}`);

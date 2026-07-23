@@ -53,5 +53,5 @@ export interface Run {
   coveragePct: number;
   valid: boolean;
   reasons: string[];
-  endedBy: 'manual' | 'seed';
+  endedBy: 'manual' | 'seed' | 'auto';
 }

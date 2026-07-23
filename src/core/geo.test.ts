@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { bearingDeg, haversineM, type LatLon } from './geo';
+import { bearingDeg, haversineM, projectOntoSegment, type LatLon } from './geo';
 
 describe('haversineM', () => {
   it('is zero for identical points', () => {
@@ -33,5 +33,57 @@ describe('bearingDeg', () => {
     const a: LatLon = { lat: 0, lon: 0 };
     const b: LatLon = { lat: 0, lon: 1 };
     expect(bearingDeg(a, b)).toBeCloseTo(90, 1);
+  });
+});
+
+describe('projectOntoSegment', () => {
+  it('projects a point directly onto the segment midpoint', () => {
+    // A short east-west segment near the equator; offset the point due
+    // north from its midpoint.
+    const a: LatLon = { lat: 0, lon: 0 };
+    const b: LatLon = { lat: 0, lon: 0.01 };
+    const mid: LatLon = { lat: 0, lon: 0.005 };
+    const p: LatLon = { lat: 0.001, lon: 0.005 };
+
+    const { tFrac, offsetM, point } = projectOntoSegment(p, a, b);
+
+    expect(tFrac).toBeCloseTo(0.5, 2);
+    expect(offsetM).toBeGreaterThan(0);
+    expect(offsetM).toBeCloseTo(haversineM(p, mid), -1);
+    expect(point.lon).toBeCloseTo(mid.lon, 4);
+  });
+
+  it('clamps tFrac to 0 when the point projects before a', () => {
+    const a: LatLon = { lat: 0, lon: 0 };
+    const b: LatLon = { lat: 0, lon: 0.01 };
+    const p: LatLon = { lat: 0, lon: -0.01 };
+
+    const { tFrac, point } = projectOntoSegment(p, a, b);
+
+    expect(tFrac).toBe(0);
+    expect(point.lon).toBeCloseTo(a.lon, 6);
+  });
+
+  it('clamps tFrac to 1 when the point projects past b', () => {
+    const a: LatLon = { lat: 0, lon: 0 };
+    const b: LatLon = { lat: 0, lon: 0.01 };
+    const p: LatLon = { lat: 0, lon: 0.02 };
+
+    const { tFrac, point } = projectOntoSegment(p, a, b);
+
+    expect(tFrac).toBe(1);
+    expect(point.lon).toBeCloseTo(b.lon, 6);
+  });
+
+  it('offsetM is ~0 for a point on the segment', () => {
+    const a: LatLon = { lat: 51.5, lon: -0.1 };
+    const b: LatLon = { lat: 51.51, lon: -0.09 };
+    const p: LatLon = {
+      lat: (a.lat + b.lat) / 2,
+      lon: (a.lon + b.lon) / 2
+    };
+
+    const { offsetM } = projectOntoSegment(p, a, b);
+    expect(offsetM).toBeLessThan(1);
   });
 });

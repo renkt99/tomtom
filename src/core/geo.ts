@@ -1,9 +1,8 @@
-// Pure geo math. No imports — keep this module dependency-free.
+// Pure geo math. Only depends on ./types — keep this module DOM-free.
 
-export interface LatLon {
-  lat: number;
-  lon: number;
-}
+import type { LatLon } from './types';
+
+export type { LatLon } from './types';
 
 const EARTH_RADIUS_M = 6371000;
 
@@ -46,4 +45,60 @@ export function bearingDeg(a: LatLon, b: LatLon): number {
   const theta = Math.atan2(y, x);
 
   return (toDeg(theta) + 360) % 360;
+}
+
+export interface SegmentProjection {
+  point: LatLon;
+  tFrac: number;
+  offsetM: number;
+}
+
+/**
+ * Project point p onto segment a→b using a local equirectangular projection
+ * centered near p (here: at a's coordinates), accurate for the short segment
+ * lengths a route polyline is simplified to.
+ */
+export function projectOntoSegment(
+  p: LatLon,
+  a: LatLon,
+  b: LatLon
+): SegmentProjection {
+  const lat0 = toRad(a.lat);
+  const lon0 = toRad(a.lon);
+  const cosLat0 = Math.cos(lat0);
+
+  const toLocal = (q: LatLon): { x: number; y: number } => ({
+    x: (toRad(q.lon) - lon0) * cosLat0 * EARTH_RADIUS_M,
+    y: (toRad(q.lat) - lat0) * EARTH_RADIUS_M
+  });
+
+  const pl = toLocal(p);
+  const al = toLocal(a);
+  const bl = toLocal(b);
+
+  const abx = bl.x - al.x;
+  const aby = bl.y - al.y;
+  const lenSq = abx * abx + aby * aby;
+
+  let tFrac: number;
+  if (lenSq === 0) {
+    tFrac = 0;
+  } else {
+    const apx = pl.x - al.x;
+    const apy = pl.y - al.y;
+    tFrac = (apx * abx + apy * aby) / lenSq;
+  }
+  tFrac = Math.max(0, Math.min(1, tFrac));
+
+  const projX = al.x + tFrac * abx;
+  const projY = al.y + tFrac * aby;
+
+  const point: LatLon = {
+    lat: toDeg(projY / EARTH_RADIUS_M + lat0),
+    lon: toDeg(projX / (cosLat0 * EARTH_RADIUS_M) + lon0)
+  };
+
+  const offsetM = haversineM(p, point);
+
+  return { point, tFrac, offsetM };
 }

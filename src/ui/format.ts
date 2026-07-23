@@ -41,3 +41,16 @@ export function formatEtaMinutes(ms: number): string {
   if (ms < 60_000) return '<1 min';
   return `~${Math.round(ms / 60_000)} min`;
 }
+
+/**
+ * Format a delta-vs-best-run in ms as a signed m:ss, e.g. `-12000` -> "-0:12"
+ * (ahead of best), `7000` -> "+0:07" (behind best). Sign convention matches
+ * computeDeltaMs: negative = ahead, positive = behind.
+ */
+export function formatDeltaMs(ms: number): string {
+  const sign = ms < 0 ? '-' : '+';
+  const totalSeconds = Math.round(Math.abs(ms) / 1000);
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${sign}${minutes}:${String(seconds).padStart(2, '0')}`;
+}

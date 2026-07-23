@@ -265,3 +265,30 @@ h2 {
   color: #9aa3ad;
   font-size: 0.9rem;
 }
+
+.delta-chip {
+  position: absolute;
+  bottom: calc(env(safe-area-inset-bottom, 0.75rem) + 1.25rem);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 1000;
+  padding: 0.5rem 1.25rem;
+  border-radius: 16px;
+  background: rgba(11, 13, 16, 0.85);
+  font-variant-numeric: tabular-nums;
+  font-size: 2rem;
+  font-weight: 700;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
+}
+
+.delta-ahead {
+  color: #22c55e;
+}
+
+.delta-behind {
+  color: #ef4444;
+}
+
+.delta-neutral {
+  color: #9aa3ad;
+}

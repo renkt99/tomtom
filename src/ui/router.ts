@@ -4,11 +4,14 @@ export type ScreenRoute =
   | { screen: 'list' }
   | { screen: 'new' }
   | { screen: 'detail'; id: string }
-  | { screen: 'drive'; id: string }
+  | { screen: 'drive'; id: string; replayRunId: string | null }
   | { screen: 'drive-new' };
 
 function parseHash(hash: string): ScreenRoute {
-  const path = hash.replace(/^#/, '') || '/';
+  const withoutHash = hash.replace(/^#/, '') || '/';
+  const [rawPath, rawQuery] = withoutHash.split('?', 2);
+  const path = rawPath || '/';
+  const query = new URLSearchParams(rawQuery ?? '');
 
   if (path === '/' || path === '') return { screen: 'list' };
   if (path === '/new') return { screen: 'new' };
@@ -18,7 +21,13 @@ function parseHash(hash: string): ScreenRoute {
   if (detailMatch) return { screen: 'detail', id: detailMatch[1] };
 
   const driveMatch = path.match(/^\/drive\/([^/]+)$/);
-  if (driveMatch) return { screen: 'drive', id: driveMatch[1] };
+  if (driveMatch) {
+    return {
+      screen: 'drive',
+      id: driveMatch[1],
+      replayRunId: query.get('replay')
+    };
+  }
 
   return { screen: 'list' };
 }

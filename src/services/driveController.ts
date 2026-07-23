@@ -1,8 +1,10 @@
 import { signal, type Signal } from '@preact/signals';
 import { acceptFix } from '../core/filter';
+import { computeDeltaMs, createEmaSmoother } from '../core/delta';
 import { haversineM } from '../core/geo';
+import { ghostPositionAt } from '../core/ghost';
 import { matchProgress, type ProgressHint } from '../core/progress';
-import type { RawFix, Route, TracePoint } from '../core/types';
+import type { LatLon, RawFix, Route, TracePoint } from '../core/types';
 import type { PositionSource } from './positionSource';
 
 export type DriveState = 'idle' | 'acquiring' | 'recording' | 'finished' | 'error';
@@ -17,6 +19,10 @@ export interface DriveController {
   /** Only meaningful in route mode (route !== null). */
   offRoute: Signal<boolean>;
   errorMessage: Signal<string | null>;
+  /** Null when bestTrace is null, or before recording starts. */
+  deltaMs: Signal<number | null>;
+  /** Null when bestTrace is null, or before recording starts. */
+  ghostPos: Signal<LatLon | null>;
   /**
    * Plain (non-signal) array of accumulated trace points, mutated in place
    * as fixes are accepted. Not reactive on its own — pair reads of it with
@@ -38,7 +44,8 @@ export interface DriveController {
  */
 export function createDriveController(
   source: PositionSource,
-  route: Route | null
+  route: Route | null,
+  bestTrace: TracePoint[] | null = null
 ): DriveController {
   const state = signal<DriveState>('idle');
   const elapsedMs = signal(0);
@@ -47,6 +54,8 @@ export function createDriveController(
   const lastFix = signal<RawFix | null>(null);
   const offRoute = signal(false);
   const errorMessage = signal<string | null>(null);
+  const deltaMs = signal<number | null>(null);
+  const ghostPos = signal<LatLon | null>(null);
 
   const trace: TracePoint[] = [];
   const rawFixes: RawFix[] = [];
@@ -57,6 +66,7 @@ export function createDriveController(
   let seedCumDistM = 0;
   let prevSeedFix: RawFix | null = null;
   let intervalId: ReturnType<typeof setInterval> | null = null;
+  const deltaSmoother = createEmaSmoother(0.3);
 
   function onFix(fix: RawFix): void {
     if (!acceptFix(prevAcceptedRawFix, fix)) return;
@@ -68,6 +78,9 @@ export function createDriveController(
       state.value = 'recording';
       intervalId = setInterval(() => {
         elapsedMs.value = Date.now() - startedAt;
+        if (bestTrace) {
+          ghostPos.value = ghostPositionAt(bestTrace, Date.now() - startedAt);
+        }
       }, 1000);
     }
 
@@ -96,6 +109,12 @@ export function createDriveController(
 
     lastFix.value = fix;
     distM.value = d;
+
+    if (bestTrace) {
+      const elapsed = fix.t - startedAt;
+      deltaMs.value = deltaSmoother.next(computeDeltaMs(elapsed, d, bestTrace));
+      ghostPos.value = ghostPositionAt(bestTrace, Date.now() - startedAt);
+    }
   }
 
   function onError(msg: string): void {
@@ -126,6 +145,8 @@ export function createDriveController(
     lastFix,
     offRoute,
     errorMessage,
+    deltaMs,
+    ghostPos,
     trace,
     start,
     stop

@@ -15,9 +15,9 @@ export function App() {
     case 'detail':
       return <RouteDetail id={route.id} />;
     case 'drive':
-      return <DriveScreen routeId={route.id} />;
+      return <DriveScreen routeId={route.id} replayRunId={route.replayRunId} />;
     case 'drive-new':
-      return <DriveScreen routeId={null} />;
+      return <DriveScreen routeId={null} replayRunId={null} />;
     default:
       return <RouteList />;
   }

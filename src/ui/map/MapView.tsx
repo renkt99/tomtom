@@ -15,20 +15,24 @@ export interface MapViewProps {
   routePolyline?: LatLon[];
   lastFix?: RawFix | null;
   statusText?: string;
+  /** Live ghost-car position (best-run comparison). Null/undefined hides it. */
+  ghostPos?: LatLon | null;
 }
 
 /**
  * Purely presentational map: draws the route polyline (if given), renders a
- * car dot + accuracy circle from `lastFix`, and shows `statusText` in a
- * status pill. Does not touch navigator.geolocation — callers (driveController)
- * own the position stream and pass fixes in as props.
+ * car dot + accuracy circle from `lastFix`, a translucent ghost marker from
+ * `ghostPos`, and shows `statusText` in a status pill. Does not touch
+ * navigator.geolocation — callers (driveController) own the position stream
+ * and pass fixes in as props.
  */
-export function MapView({ routePolyline, lastFix, statusText }: MapViewProps) {
+export function MapView({ routePolyline, lastFix, statusText, ghostPos }: MapViewProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<L.Map | null>(null);
   const routeLayerRef = useRef<L.Polyline | null>(null);
   const dotRef = useRef<L.CircleMarker | null>(null);
   const accuracyCircleRef = useRef<L.Circle | null>(null);
+  const ghostRef = useRef<L.CircleMarker | null>(null);
   const hasFitRef = useRef(false);
 
   // Mount the map once.
@@ -50,6 +54,7 @@ export function MapView({ routePolyline, lastFix, statusText }: MapViewProps) {
       routeLayerRef.current = null;
       dotRef.current = null;
       accuracyCircleRef.current = null;
+      ghostRef.current = null;
       hasFitRef.current = false;
     };
   }, []);
@@ -113,6 +118,34 @@ export function MapView({ routePolyline, lastFix, statusText }: MapViewProps) {
       map.setView(latlng, FIX_ZOOM);
     }
   }, [lastFix]);
+
+  // Render/move/remove the translucent ghost marker from ghostPos.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+
+    if (!ghostPos) {
+      if (ghostRef.current) {
+        ghostRef.current.remove();
+        ghostRef.current = null;
+      }
+      return;
+    }
+
+    const latlng: L.LatLngTuple = [ghostPos.lat, ghostPos.lon];
+
+    if (!ghostRef.current) {
+      ghostRef.current = L.circleMarker(latlng, {
+        radius: 7,
+        color: '#a78bfa',
+        weight: 2,
+        fillColor: '#8b5cf6',
+        fillOpacity: 0.6
+      }).addTo(map);
+    } else {
+      ghostRef.current.setLatLng(latlng);
+    }
+  }, [ghostPos]);
 
   return (
     <div class="map-screen">

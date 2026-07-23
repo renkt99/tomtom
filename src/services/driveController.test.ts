@@ -83,4 +83,43 @@ describe('createDriveController', () => {
     expect(controller.state.value).toBe('error');
     expect(controller.errorMessage.value).toBe('permission denied');
   });
+
+  it('with a bestTrace, keeps deltaMs small and ghostPos non-null while replaying the same drive', () => {
+    vi.useFakeTimers();
+    try {
+      const polyline = [
+        { lat: 40, lon: -74 },
+        { lat: 40.001, lon: -74.001 }
+      ];
+      const fixes = makeTrace(polyline, { speedMs: 10, hz: 1, noiseM: 0 });
+
+      // First pass: drive it once (seed mode, no bestTrace) to get a trace.
+      const firstSource = new StubPositionSource();
+      const firstController = createDriveController(firstSource, null);
+      firstController.start();
+      for (const f of fixes) firstSource.push(f);
+      firstController.stop();
+      const bestTrace = firstController.trace;
+
+      expect(bestTrace.length).toBeGreaterThan(0);
+
+      // Second pass: same fixes, now with bestTrace wired in.
+      const source = new StubPositionSource();
+      const controller = createDriveController(source, null, bestTrace);
+
+      expect(controller.deltaMs.value).toBeNull();
+      expect(controller.ghostPos.value).toBeNull();
+
+      controller.start();
+      for (const f of fixes) source.push(f);
+
+      expect(controller.deltaMs.value).not.toBeNull();
+      expect(Math.abs(controller.deltaMs.value!)).toBeLessThan(1500);
+      expect(controller.ghostPos.value).not.toBeNull();
+
+      controller.stop();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });

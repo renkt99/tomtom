@@ -100,6 +100,12 @@ export function RouteDetail({ id }: RouteDetailProps) {
                   </span>
                 ) : null}
               </div>
+              <button
+                class="btn btn-secondary btn-small"
+                onClick={() => navigate(`#/drive/${currentRoute.id}?replay=${run.id}`)}
+              >
+                Replay
+              </button>
               <button class="btn btn-danger btn-small" onClick={() => handleDeleteRun(run.id)}>
                 Delete
               </button>

@@ -1,7 +1,7 @@
 // Pure run validation. No DOM imports.
 
 import { haversineM } from './geo';
-import { matchProgress, type ProgressHint } from './progress';
+import { matchAdvanceBudgetM, matchProgress, type ProgressHint } from './progress';
 import type { Route } from './types';
 
 export interface ValidateResult {
@@ -33,9 +33,16 @@ export function validateRun(
 
   let hint: ProgressHint = { segIdx: 0, distAlongM: 0, offRouteM: 0 };
   let maxInCorridorDistM = 0;
+  let prevT: number | null = null;
 
   for (const pt of trace) {
-    hint = matchProgress({ lat: pt.lat, lon: pt.lon }, route, hint);
+    hint = matchProgress(
+      { lat: pt.lat, lon: pt.lon },
+      route,
+      hint,
+      matchAdvanceBudgetM(prevT === null ? 0 : pt.t - prevT)
+    );
+    prevT = pt.t;
     if (hint.offRouteM <= route.corridorM) {
       maxInCorridorDistM = Math.max(maxInCorridorDistM, hint.distAlongM);
     }

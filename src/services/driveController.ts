@@ -3,7 +3,7 @@ import { acceptFix } from '../core/filter';
 import { computeDeltaMs, createEmaSmoother } from '../core/delta';
 import { haversineM } from '../core/geo';
 import { ghostPositionAt } from '../core/ghost';
-import { matchProgress, type ProgressHint } from '../core/progress';
+import { matchAdvanceBudgetM, matchProgress, type ProgressHint } from '../core/progress';
 import { createAutoStopDetector, type AutoStopOpts } from '../core/autostop';
 import type { LatLon, RawFix, Route, TracePoint } from '../core/types';
 import type { PositionSource } from './positionSource';
@@ -132,6 +132,7 @@ export function createDriveController(
       return;
     }
     acceptedCount.value++;
+    const dtMs = prevAcceptedRawFix ? fix.t - prevAcceptedRawFix.t : 0;
     prevAcceptedRawFix = fix;
 
     if (state.value === 'acquiring') {
@@ -149,7 +150,12 @@ export function createDriveController(
 
     let d: number;
     if (route) {
-      hint = matchProgress({ lat: fix.lat, lon: fix.lon }, route, hint);
+      hint = matchProgress(
+        { lat: fix.lat, lon: fix.lon },
+        route,
+        hint,
+        matchAdvanceBudgetM(dtMs)
+      );
       d = hint.distAlongM;
       offRouteM.value = hint.offRouteM;
       offRoute.value = hint.offRouteM > route.corridorM;

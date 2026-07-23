@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { buildCumDist } from './polyline';
-import { matchProgress, type ProgressHint } from './progress';
+import { matchAdvanceBudgetM, matchProgress, type ProgressHint } from './progress';
 import type { LatLon, Route } from './types';
 
 function makeRoute(polyline: LatLon[], corridorM = 75): Route {
@@ -98,5 +98,41 @@ describe('matchProgress', () => {
     }
 
     expect(distances[distances.length - 1]).toBeGreaterThan(route.totalDistM * 0.95);
+  });
+
+  it('with maxAdvanceM, the first fix on a loop route matches the start, not the end', () => {
+    // Closed block loop: start === end, few segments, so the final segment
+    // is inside the initial search window and ties against segment 0 for a
+    // fix at the shared vertex. Without the advance budget, the later-
+    // segment tie preference teleports distAlongM to ~totalDistM.
+    const loop: LatLon[] = [
+      { lat: 40, lon: -74 },
+      { lat: 40, lon: -73.999 },
+      { lat: 40.0009, lon: -73.999 },
+      { lat: 40.0009, lon: -74 },
+      { lat: 40, lon: -74 }
+    ];
+    const route = makeRoute(loop);
+    const hint0: ProgressHint = { segIdx: 0, distAlongM: 0, offRouteM: 0 };
+
+    const hint = matchProgress(loop[0], route, hint0, matchAdvanceBudgetM(0));
+
+    expect(hint.segIdx).toBe(0);
+    expect(hint.distAlongM).toBeLessThan(route.totalDistM * 0.5);
+  });
+
+  it('with maxAdvanceM, sequential matching still advances to route end', () => {
+    const polyline = makeOutAndBackPolyline();
+    const route = makeRoute(polyline, 75);
+
+    let hint: ProgressHint = { segIdx: 0, distAlongM: 0, offRouteM: 0 };
+    let prev = false;
+    for (const p of polyline) {
+      // 1s between fixes, as the live controller would pass.
+      hint = matchProgress(p, route, hint, matchAdvanceBudgetM(prev ? 1000 : 0));
+      prev = true;
+    }
+
+    expect(hint.distAlongM).toBeGreaterThan(route.totalDistM * 0.95);
   });
 });

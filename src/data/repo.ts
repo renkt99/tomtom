@@ -3,6 +3,7 @@ import { haversineM } from '../core/geo';
 import { matchProgress, type ProgressHint } from '../core/progress';
 import { buildCumDist, simplifyM, trimEnds } from '../core/polyline';
 import { validateRun } from '../core/validate';
+import { estimateEtaMs, type EtaEstimate, type RunSummary } from '../core/eta';
 import type { LatLon, RawFix, Route, Run, TracePoint } from '../core/types';
 
 const DEFAULT_CORRIDOR_M = 75;
@@ -161,13 +162,19 @@ export async function saveRun(
 }
 
 export async function listRoutesWithStats(): Promise<
-  Array<{ route: Route; bestDurationMs: number | null; runCount: number }>
+  Array<{
+    route: Route;
+    bestDurationMs: number | null;
+    runCount: number;
+    eta: EtaEstimate | null;
+  }>
 > {
   const routes = await db.routes.toArray();
   const result: Array<{
     route: Route;
     bestDurationMs: number | null;
     runCount: number;
+    eta: EtaEstimate | null;
   }> = [];
 
   for (const route of routes) {
@@ -180,10 +187,37 @@ export async function listRoutesWithStats(): Promise<
       bestDurationMs = bestRun ? bestRun.durationMs : null;
     }
 
-    result.push({ route, bestDurationMs, runCount });
+    const eta = await getEtaForRoute(route.id);
+
+    result.push({ route, bestDurationMs, runCount, eta });
   }
 
   return result;
+}
+
+/**
+ * Estimate the ETA for a route based on its historical valid runs. Returns
+ * null if there are no valid runs at all. `at` defaults to the current
+ * dow/hour/time; pass an override (e.g. for tests) to estimate for a
+ * different moment.
+ */
+export async function getEtaForRoute(
+  routeId: string,
+  at?: { dow: number; hour: number; nowMs: number }
+): Promise<EtaEstimate | null> {
+  const runs = await db.runs.where('routeId').equals(routeId).toArray();
+  const validRuns = runs.filter((r) => r.valid);
+
+  const summaries: RunSummary[] = validRuns.map((r) => ({
+    durationMs: r.durationMs,
+    startedAt: r.startedAt,
+    dow: r.dow,
+    hour: r.hour
+  }));
+
+  const resolvedAt = at ?? { ...dowAndHour(Date.now()), nowMs: Date.now() };
+
+  return estimateEtaMs(summaries, resolvedAt);
 }
 
 export async function getRoute(id: string): Promise<Route | undefined> {

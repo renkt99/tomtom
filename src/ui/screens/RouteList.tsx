@@ -1,13 +1,15 @@
 import { useEffect, useState } from 'preact/hooks';
 import { listRoutesWithStats } from '../../data/repo';
 import type { Route } from '../../core/types';
+import type { EtaBasis } from '../../core/eta';
 import { navigate } from '../router';
-import { formatDurationMs } from '../format';
+import { formatDurationMs, formatEtaMinutes } from '../format';
 
 interface StatsRow {
   route: Route;
   bestDurationMs: number | null;
   runCount: number;
+  eta: { etaMs: number; basis: EtaBasis; n: number } | null;
 }
 
 export function RouteList() {
@@ -32,7 +34,7 @@ export function RouteList() {
         <p>No routes yet. Add one to start tracking drives.</p>
       ) : (
         <div class="route-list">
-          {rows.map(({ route, bestDurationMs, runCount }) => (
+          {rows.map(({ route, bestDurationMs, runCount, eta }) => (
             <div class="route-card" key={route.id}>
               <div
                 class="route-card-main"
@@ -45,6 +47,12 @@ export function RouteList() {
                     : 'no valid runs'}
                   {' · '}
                   {runCount} run{runCount === 1 ? '' : 's'}
+                  {eta !== null && (
+                    <>
+                      {' · '}
+                      {formatEtaMinutes(eta.etaMs)}
+                    </>
+                  )}
                 </div>
               </div>
               <button

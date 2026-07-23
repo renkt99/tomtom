@@ -167,7 +167,9 @@ export function DriveScreen({ routeId, replayRunId }: DriveScreenProps) {
       source = geolocationSource;
     }
 
-    const c = createDriveController(source, routeForController, bestTrace);
+    const c = createDriveController(source, routeForController, bestTrace, {
+      timeScale: isDemo || isReplay ? simConfig.speedMult : 1
+    });
     controllerRef.current = c;
     setController(c);
     c.start();

@@ -45,8 +45,19 @@ export interface DriveController {
 export function createDriveController(
   source: PositionSource,
   route: Route | null,
-  bestTrace: TracePoint[] | null = null
+  bestTrace: TracePoint[] | null = null,
+  opts: {
+    /**
+     * Multiplier applied to wall-clock elapsed time between fixes. Leave at
+     * 1 for real drives. For simulated playback at N× (where the source
+     * emits synthesized timestamps with original intervals on a compressed
+     * wall schedule), pass N so the ticker's display/ghost updates advance
+     * in drive-time between fix arrivals.
+     */
+    timeScale?: number;
+  } = {}
 ): DriveController {
+  const timeScale = opts.timeScale ?? 1;
   const state = signal<DriveState>('idle');
   const elapsedMs = signal(0);
   const startedAtMs = signal<number | null>(null);
@@ -77,9 +88,10 @@ export function createDriveController(
       startedAtMs.value = fix.t;
       state.value = 'recording';
       intervalId = setInterval(() => {
-        elapsedMs.value = Date.now() - startedAt;
+        const elapsed = (Date.now() - startedAt) * timeScale;
+        elapsedMs.value = elapsed;
         if (bestTrace) {
-          ghostPos.value = ghostPositionAt(bestTrace, Date.now() - startedAt);
+          ghostPos.value = ghostPositionAt(bestTrace, elapsed);
         }
       }, 1000);
     }
@@ -110,10 +122,14 @@ export function createDriveController(
     lastFix.value = fix;
     distM.value = d;
 
+    // Fix timestamps are authoritative drive-time (real epoch for live GPS,
+    // synthesized original-interval epoch for simulated playback) — use them
+    // for delta/ghost/display rather than the wall clock.
+    const elapsed = fix.t - startedAt;
+    elapsedMs.value = elapsed;
     if (bestTrace) {
-      const elapsed = fix.t - startedAt;
       deltaMs.value = deltaSmoother.next(computeDeltaMs(elapsed, d, bestTrace));
-      ghostPos.value = ghostPositionAt(bestTrace, Date.now() - startedAt);
+      ghostPos.value = ghostPositionAt(bestTrace, elapsed);
     }
   }
 

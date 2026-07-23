@@ -23,7 +23,7 @@ describe('createSimulatedSource', () => {
     }
   });
 
-  it('emits the first fix immediately with t rewritten to the current wall-clock time', () => {
+  it('emits the first fix immediately, rebased to the current wall-clock time', () => {
     vi.useFakeTimers();
     try {
       const now = 1_700_000_000_000;
@@ -55,12 +55,15 @@ describe('createSimulatedSource', () => {
       source.start((f) => received.push(f), () => {});
       expect(received.length).toBe(1);
 
-      // Original gap 0->1 is 2000ms; at speedMult 2, expect ~1000ms.
+      // Original gap 0->1 is 2000ms; at speedMult 2, DELIVERED after ~1000ms
+      // of wall time, but stamped with the ORIGINAL unscaled offset (+2000)
+      // so downstream drive-time math (delta vs ghost, durations, implied
+      // speed) is independent of playback rate.
       vi.advanceTimersByTime(999);
       expect(received.length).toBe(1);
       vi.advanceTimersByTime(2);
       expect(received.length).toBe(2);
-      expect(received[1].t).toBe(now + 1000);
+      expect(received[1].t).toBe(now + 2000);
 
       // Original gap 1->2 is 4000ms; at speedMult 2, expect ~2000ms more.
       vi.advanceTimersByTime(1998);

@@ -50,11 +50,15 @@ export interface SimulatedSourceOpts {
 
 /**
  * A PositionSource that replays a fixed list of RawFix[] (e.g. a stored run
- * or a demo fixture) instead of reading navigator.geolocation. Each fix's
- * `t` is rewritten to the wall-clock time at the moment it is emitted, so
- * the rest of the pipeline (which treats fix.t as real epoch ms) keeps
- * working unmodified. Delays between fixes are taken from the original
- * fixes' timestamps, divided by `speedMult`.
+ * or a demo fixture) instead of reading navigator.geolocation.
+ *
+ * Timestamps are synthesized, not wall-clock: fix i is emitted with
+ * `t = startWall + (original offset of fix i)`, i.e. the ORIGINAL, unscaled
+ * inter-fix intervals — only the delivery schedule is compressed by
+ * `speedMult`. This keeps everything downstream (filter's implied-speed
+ * check, delta vs best, stored trace times, run durations) in real
+ * drive-time regardless of playback speed; a 5× replay races the ghost
+ * correctly instead of appearing 5× faster than it.
  */
 export function createSimulatedSource(
   fixes: RawFix[],
@@ -76,9 +80,11 @@ export function createSimulatedSource(
         return;
       }
 
+      const startWall = Date.now();
+      const baseT = fixes[0].t;
       const emit = (fix: RawFix, isLast: boolean): void => {
         const { lat, lon } = addNoise(fix.lat, fix.lon, noiseM, rand);
-        cb({ ...fix, lat, lon, t: Date.now() });
+        cb({ ...fix, lat, lon, t: startWall + (fix.t - baseT) });
         if (isLast) onDone?.();
       };
 

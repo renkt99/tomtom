@@ -1,6 +1,6 @@
 import { db } from './db';
 import { haversineM } from '../core/geo';
-import { matchProgress, type ProgressHint } from '../core/progress';
+import { matchAdvanceBudgetM, matchProgress, type ProgressHint } from '../core/progress';
 import { buildCumDist, simplifyM, trimEnds } from '../core/polyline';
 import { validateRun } from '../core/validate';
 import { estimateEtaMs, type EtaEstimate, type RunSummary } from '../core/eta';
@@ -25,15 +25,20 @@ function toTracePoints(
   return trace.map((f) => {
     let d: number;
     if (route) {
-      hint = matchProgress({ lat: f.lat, lon: f.lon }, route, hint);
+      hint = matchProgress(
+        { lat: f.lat, lon: f.lon },
+        route,
+        hint,
+        matchAdvanceBudgetM(prevFix ? f.t - prevFix.t : 0)
+      );
       d = hint.distAlongM;
     } else {
       if (prevFix) {
         cumDistM += haversineM(prevFix, f);
       }
       d = cumDistM;
-      prevFix = f;
     }
+    prevFix = f;
 
     return {
       t: f.t - startedAt,

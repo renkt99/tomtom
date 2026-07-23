@@ -22,7 +22,12 @@ export interface DriveController {
    */
   trace: TracePoint[];
   start(): void;
-  stop(): { trace: TracePoint[]; startedAt: number };
+  /**
+   * Returns the accepted fixes with their original epoch timestamps —
+   * this is what the repo layer (createRouteFromSeed / saveRun) expects.
+   * The relative-time TracePoints in `trace` are for live display only.
+   */
+  stop(): { rawFixes: RawFix[]; startedAt: number };
 }
 
 /**
@@ -41,6 +46,7 @@ export function createDriveController(
   const errorMessage = signal<string | null>(null);
 
   const trace: TracePoint[] = [];
+  const rawFixes: RawFix[] = [];
 
   let prevAcceptedRawFix: RawFix | null = null;
   let startedAt = 0;
@@ -74,6 +80,7 @@ export function createDriveController(
       prevSeedFix = fix;
     }
 
+    rawFixes.push(fix);
     trace.push({
       t: fix.t - startedAt,
       lat: fix.lat,
@@ -97,14 +104,14 @@ export function createDriveController(
     source.start(onFix, onError);
   }
 
-  function stop(): { trace: TracePoint[]; startedAt: number } {
+  function stop(): { rawFixes: RawFix[]; startedAt: number } {
     source.stop();
     if (intervalId !== null) {
       clearInterval(intervalId);
       intervalId = null;
     }
     state.value = 'finished';
-    return { trace, startedAt };
+    return { rawFixes, startedAt };
   }
 
   return {

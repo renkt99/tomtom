@@ -64,6 +64,9 @@ export async function createRouteFromSeed(
   trace: RawFix[]
 ): Promise<Route> {
   const trimmed = trimEnds(trace);
+  if (trimmed.length < 2) {
+    throw new Error('Not enough GPS data to create a route');
+  }
   const latlons: LatLon[] = trimmed.map((f) => ({ lat: f.lat, lon: f.lon }));
   const simplified = simplifyM(latlons, 10);
   const { cumDistM, totalDistM } = buildCumDist(simplified);

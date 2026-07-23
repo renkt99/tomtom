@@ -48,14 +48,20 @@ export function DriveScreen({ routeId }: DriveScreenProps) {
     if (!controller) return;
     if (!confirm('Stop recording?')) return;
 
-    const { trace, startedAt } = controller.stop();
+    const { rawFixes, startedAt } = controller.stop();
+
+    if (rawFixes.length < 2) {
+      alert('No GPS data was recorded — nothing to save.');
+      navigate(routeId === null ? '#/' : `#/route/${routeId}`);
+      return;
+    }
 
     if (routeId === null) {
       const name = pendingRouteName.value || 'New route';
-      const newRoute = await createRouteFromSeed(name, trace);
+      const newRoute = await createRouteFromSeed(name, rawFixes);
       navigate(`#/route/${newRoute.id}`);
     } else {
-      const { run, isNewBest } = await saveRun(routeId, trace, startedAt, 'manual');
+      const { run, isNewBest } = await saveRun(routeId, rawFixes, startedAt, 'manual');
       if (isNewBest) {
         newBestFlashRunId.value = run.id;
       }

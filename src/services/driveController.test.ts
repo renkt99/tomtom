@@ -53,8 +53,17 @@ describe('createDriveController', () => {
 
       const result = controller.stop();
       expect(controller.state.value).toBe('finished');
-      expect(result.trace.length).toBe(controller.trace.length);
-      expect(result.trace.length).toBeGreaterThan(0);
+      expect(result.rawFixes.length).toBe(controller.trace.length);
+      expect(result.rawFixes.length).toBeGreaterThan(0);
+      // Contract with the repo layer: stop() returns fixes with their
+      // ORIGINAL epoch timestamps (not run-relative ones), so that
+      // saveRun/createRouteFromSeed derive correct startedAt/dow/hour
+      // and non-negative TracePoint.t values.
+      expect(result.startedAt).toBe(fixes[0].t);
+      expect(result.rawFixes[0].t).toBe(fixes[0].t);
+      for (const f of result.rawFixes) {
+        expect(f.t).toBeGreaterThanOrEqual(result.startedAt);
+      }
     } finally {
       vi.useRealTimers();
     }

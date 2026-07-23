@@ -18,6 +18,7 @@ export class GeolocationSource implements PositionSource {
           lon: pos.coords.longitude,
           acc: pos.coords.accuracy,
           spd: pos.coords.speed ?? 0,
+          hdg: Number.isFinite(pos.coords.heading) ? (pos.coords.heading as number) : undefined,
           t: pos.timestamp
         });
       },

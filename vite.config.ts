@@ -38,10 +38,10 @@ export default defineConfig({
         // Precache the app shell (default globs cover the built JS/CSS/HTML).
         runtimeCaching: [
           {
-            urlPattern: /^https:\/\/tile\.openstreetmap\.org\/.*/,
+            urlPattern: /^https:\/\/[abcd]\.basemaps\.cartocdn\.com\/rastertiles\/voyager\/.*/,
             handler: 'CacheFirst',
             options: {
-              cacheName: 'osm-tiles',
+              cacheName: 'carto-voyager',
               expiration: {
                 maxEntries: 400,
                 maxAgeSeconds: 14 * 24 * 3600

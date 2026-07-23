@@ -21,7 +21,8 @@ import {
   formatClockTime,
   formatDeltaMs,
   formatDurationMs,
-  formatEtaBasis
+  formatEtaBasis,
+  formatSpeedKmh
 } from '../format';
 import { pendingRouteName } from './NewRoute';
 import { newBestFlashRunId } from './RouteDetail';
@@ -334,6 +335,8 @@ export function DriveScreen({ routeId, replayRunId }: DriveScreenProps) {
   const deltaMs = controller?.deltaMs.value ?? null;
   const rawDeltaMs = controller?.rawDeltaMs.value ?? null;
   const distM = controller?.distM.value ?? 0;
+  const headingDeg = controller?.headingDeg.value ?? null;
+  const speedMs = controller?.speedMs.value ?? 0;
   const acceptedCount = controller?.acceptedCount.value ?? 0;
   const rejectedCount = controller?.rejectedCount.value ?? 0;
   const wakeLockLost = wakeLock.lost.value;
@@ -362,7 +365,12 @@ export function DriveScreen({ routeId, replayRunId }: DriveScreenProps) {
 
   return (
     <div class="drive-screen">
-      <MapView routePolyline={route?.polyline} lastFix={lastFix} ghostPos={ghostPos} />
+      <MapView
+        routePolyline={route?.polyline}
+        lastFix={lastFix}
+        ghostPos={ghostPos}
+        headingDeg={headingDeg}
+      />
       <div class="drive-top-bar">
         <div class="drive-timer-col">
           <div class="drive-timer">{formatDurationMs(elapsedMs)}</div>
@@ -395,6 +403,9 @@ export function DriveScreen({ routeId, replayRunId }: DriveScreenProps) {
       </div>
       {deltaMs !== null && (
         <div class={`delta-chip ${deltaClass}`}>{formatDeltaMs(deltaMs)}</div>
+      )}
+      {state === 'recording' && (
+        <div class="speed-chip">{formatSpeedKmh(speedMs)}</div>
       )}
       {simConfig.debug && (
         <div class="debug-panel">

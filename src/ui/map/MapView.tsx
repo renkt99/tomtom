@@ -1,15 +1,36 @@
 import { useEffect, useRef } from 'preact/hooks';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
+import { shortestArcDelta } from '../../core/heading';
 import type { LatLon, RawFix } from '../../core/types';
 
-const TILE_URL = 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
-const ATTRIBUTION = '&copy; OpenStreetMap contributors';
+const TILE_URL = 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png';
+const ATTRIBUTION =
+  '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>';
 
 // Neutral default view (roughly mid-Atlantic) used until a route/fix arrives.
 const DEFAULT_CENTER: L.LatLngTuple = [20, 0];
 const DEFAULT_ZOOM = 13;
 const FIX_ZOOM = 16;
+
+// Simple top-down car silhouette, nose pointing up (rotated via CSS transform
+// to match heading). Rounded body with a darker windshield/rear-window
+// detail and a white outline for contrast against light Voyager tiles.
+const CAR_SVG =
+  '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">' +
+  '<rect x="6" y="2" width="12" height="20" rx="5" fill="#3b82f6" stroke="#ffffff" stroke-width="1.2"/>' +
+  '<rect x="8.2" y="5" width="7.6" height="5" rx="1.8" fill="#1d4ed8"/>' +
+  '<rect x="8.6" y="15.5" width="6.8" height="3.5" rx="1.5" fill="#1d4ed8" opacity="0.55"/>' +
+  '</svg>';
+
+// Created once at module scope: the icon itself is static, only the inner
+// div's CSS transform changes per fix (see the headingDeg effect below).
+const CAR_ICON = L.divIcon({
+  className: 'car-marker',
+  html: `<div class="car-marker-inner">${CAR_SVG}</div>`,
+  iconSize: [30, 30],
+  iconAnchor: [15, 15]
+});
 
 export interface MapViewProps {
   routePolyline?: LatLon[];
@@ -17,23 +38,28 @@ export interface MapViewProps {
   statusText?: string;
   /** Live ghost-car position (best-run comparison). Null/undefined hides it. */
   ghostPos?: LatLon | null;
+  /** Current display heading, degrees 0-360 (0 = north). Null/undefined leaves the marker's rotation unchanged. */
+  headingDeg?: number | null;
 }
 
 /**
  * Purely presentational map: draws the route polyline (if given), renders a
- * car dot + accuracy circle from `lastFix`, a translucent ghost marker from
- * `ghostPos`, and shows `statusText` in a status pill. Does not touch
- * navigator.geolocation — callers (driveController) own the position stream
- * and pass fixes in as props.
+ * car marker + accuracy circle from `lastFix` (rotated per `headingDeg`), a
+ * translucent ghost marker from `ghostPos`, and shows `statusText` in a
+ * status pill. Does not touch navigator.geolocation — callers
+ * (driveController) own the position stream and pass fixes in as props.
  */
-export function MapView({ routePolyline, lastFix, statusText, ghostPos }: MapViewProps) {
+export function MapView({ routePolyline, lastFix, statusText, ghostPos, headingDeg }: MapViewProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<L.Map | null>(null);
   const routeLayerRef = useRef<L.Polyline | null>(null);
-  const dotRef = useRef<L.CircleMarker | null>(null);
+  const markerRef = useRef<L.Marker | null>(null);
   const accuracyCircleRef = useRef<L.Circle | null>(null);
   const ghostRef = useRef<L.CircleMarker | null>(null);
   const hasFitRef = useRef(false);
+  // Accumulated rotation degrees (unbounded, not wrapped to 0-360) so the
+  // CSS transition always takes the short way around via shortestArcDelta.
+  const displayedHeadingRef = useRef(0);
 
   // Mount the map once.
   useEffect(() => {
@@ -45,14 +71,15 @@ export function MapView({ routePolyline, lastFix, statusText, ghostPos }: MapVie
 
     L.tileLayer(TILE_URL, {
       attribution: ATTRIBUTION,
-      maxZoom: 19
+      subdomains: 'abcd',
+      maxZoom: 20
     }).addTo(map);
 
     return () => {
       map.remove();
       mapRef.current = null;
       routeLayerRef.current = null;
-      dotRef.current = null;
+      markerRef.current = null;
       accuracyCircleRef.current = null;
       ghostRef.current = null;
       hasFitRef.current = false;
@@ -82,7 +109,7 @@ export function MapView({ routePolyline, lastFix, statusText, ghostPos }: MapVie
     }
   }, [routePolyline]);
 
-  // Render/update the car dot + accuracy circle from lastFix.
+  // Render/update the car marker + accuracy circle from lastFix.
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !lastFix) return;
@@ -102,22 +129,30 @@ export function MapView({ routePolyline, lastFix, statusText, ghostPos }: MapVie
       accuracyCircleRef.current.setRadius(lastFix.acc);
     }
 
-    if (!dotRef.current) {
-      dotRef.current = L.circleMarker(latlng, {
-        radius: 7,
-        color: '#3b82f6',
-        weight: 2,
-        fillColor: '#60a5fa',
-        fillOpacity: 0.9
-      }).addTo(map);
+    if (!markerRef.current) {
+      markerRef.current = L.marker(latlng, { icon: CAR_ICON }).addTo(map);
     } else {
-      dotRef.current.setLatLng(latlng);
+      markerRef.current.setLatLng(latlng);
     }
 
     if (!hasFitRef.current) {
       map.setView(latlng, FIX_ZOOM);
     }
   }, [lastFix]);
+
+  // Rotate the car marker's inner div to face headingDeg, accumulating via
+  // shortest-arc so the CSS transition never spins the long way around.
+  useEffect(() => {
+    if (headingDeg == null) return;
+    const marker = markerRef.current;
+    if (!marker) return;
+    const el = marker.getElement()?.firstElementChild as HTMLElement | null;
+    if (!el) return;
+
+    const cur = displayedHeadingRef.current;
+    displayedHeadingRef.current = cur + shortestArcDelta(((cur % 360) + 360) % 360, headingDeg);
+    el.style.transform = `rotate(${displayedHeadingRef.current}deg)`;
+  }, [headingDeg]);
 
   // Render/move/remove the translucent ghost marker from ghostPos.
   useEffect(() => {

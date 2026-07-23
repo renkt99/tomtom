@@ -14,6 +14,8 @@ export interface RawFix {
   acc: number;
   /** Reported speed, m/s. Browsers may report NaN or omit it. */
   spd?: number;
+  /** Course over ground, degrees 0-360 (0 = north). Undefined when the device doesn't report one. */
+  hdg?: number;
   /** Epoch ms. */
   t: number;
 }

@@ -42,6 +42,11 @@ export function formatEtaMinutes(ms: number): string {
   return `~${Math.round(ms / 60_000)} min`;
 }
 
+/** Format a speed in m/s as whole km/h, e.g. 13.4 -> "48 km/h". */
+export function formatSpeedKmh(speedMs: number): string {
+  return `${Math.round(speedMs * 3.6)} km/h`;
+}
+
 /**
  * Format a delta-vs-best-run in ms as a signed m:ss, e.g. `-12000` -> "-0:12"
  * (ahead of best), `7000` -> "+0:07" (behind best). Sign convention matches

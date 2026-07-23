@@ -124,7 +124,11 @@ export function Settings() {
         <a class="link" href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">
           OpenStreetMap
         </a>{' '}
-        contributors.
+        contributors. Map tiles by{' '}
+        <a class="link" href="https://carto.com/attributions" target="_blank" rel="noreferrer">
+          CARTO
+        </a>
+        .
       </p>
       <p class="route-detail-meta">TomTom v{packageJson.version}</p>
 

@@ -224,3 +224,93 @@ describe('createDriveController auto-stop', () => {
     expect(autoStopCalled).toBe(false);
   });
 });
+
+const HEADING_BASE_T = 1700000000000;
+
+function headingFix(overrides: Partial<RawFix>): RawFix {
+  return { lat: 40, lon: -74, acc: 10, spd: 10, t: HEADING_BASE_T, ...overrides };
+}
+
+describe('createDriveController headingDeg/speedMs', () => {
+  it('exposes the device-reported heading directly when fixes carry hdg', () => {
+    vi.useFakeTimers();
+    try {
+      const source = new StubPositionSource();
+      const controller = createDriveController(source, null);
+      controller.start();
+
+      source.push(headingFix({ hdg: 90 }));
+
+      expect(controller.headingDeg.value).toBe(90);
+
+      controller.stop();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('falls back to a bearing-derived heading when fixes lack hdg but move', () => {
+    vi.useFakeTimers();
+    try {
+      const source = new StubPositionSource();
+      const controller = createDriveController(source, null);
+      controller.start();
+
+      // First fix: no prior fix to derive a bearing from, so heading stays null.
+      source.push(headingFix({ lat: 40, lon: -74, t: HEADING_BASE_T, hdg: undefined }));
+      expect(controller.headingDeg.value).toBeNull();
+
+      // Second fix: due east of the first (~40m), no hdg -> bearing fallback ~90.
+      source.push(
+        headingFix({ lat: 40, lon: -73.9995, t: HEADING_BASE_T + 5000, hdg: undefined })
+      );
+
+      expect(controller.headingDeg.value).not.toBeNull();
+      expect(controller.headingDeg.value!).toBeCloseTo(90, 0);
+
+      controller.stop();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('speedMs reflects fix.spd when present', () => {
+    vi.useFakeTimers();
+    try {
+      const source = new StubPositionSource();
+      const controller = createDriveController(source, null);
+      controller.start();
+
+      source.push(headingFix({ spd: 15 }));
+
+      expect(controller.speedMs.value).toBe(15);
+
+      controller.stop();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('derives speedMs from consecutive fixes when spd is 0/undefined but the vehicle is moving', () => {
+    vi.useFakeTimers();
+    try {
+      const source = new StubPositionSource();
+      const controller = createDriveController(source, null);
+      controller.start();
+
+      source.push(headingFix({ lat: 40, lon: -74, t: HEADING_BASE_T, spd: 0 }));
+      expect(controller.speedMs.value).toBe(0); // no prev fix yet to derive from
+
+      // ~40m east, 5s later.
+      source.push(
+        headingFix({ lat: 40, lon: -73.9995, t: HEADING_BASE_T + 5000, spd: undefined })
+      );
+
+      expect(controller.speedMs.value).toBeGreaterThan(0);
+
+      controller.stop();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});

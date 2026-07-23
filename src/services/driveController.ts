@@ -2,6 +2,7 @@ import { signal, type Signal } from '@preact/signals';
 import { acceptFix } from '../core/filter';
 import { computeDeltaMs, createEmaSmoother } from '../core/delta';
 import { haversineM } from '../core/geo';
+import { nextHeadingDeg } from '../core/heading';
 import { ghostPositionAt } from '../core/ghost';
 import { matchAdvanceBudgetM, matchProgress, type ProgressHint } from '../core/progress';
 import { createAutoStopDetector, type AutoStopOpts } from '../core/autostop';
@@ -22,6 +23,10 @@ export interface DriveController {
   startedAtMs: Signal<number | null>;
   distM: Signal<number>;
   lastFix: Signal<RawFix | null>;
+  /** Display heading, degrees 0-360 (0 = north). Null until a heading basis first exists. */
+  headingDeg: Signal<number | null>;
+  /** Current display speed, m/s: device-reported when available, else derived from consecutive fixes. */
+  speedMs: Signal<number>;
   /** Only meaningful in route mode (route !== null). */
   offRoute: Signal<boolean>;
   /** Numeric off-route distance, meters (route mode only; 0 in seed mode). */
@@ -93,6 +98,8 @@ export function createDriveController(
   const startedAtMs = signal<number | null>(null);
   const distM = signal(0);
   const lastFix = signal<RawFix | null>(null);
+  const headingDeg = signal<number | null>(null);
+  const speedMs = signal(0);
   const offRoute = signal(false);
   const offRouteM = signal(0);
   const errorMessage = signal<string | null>(null);
@@ -133,6 +140,13 @@ export function createDriveController(
     }
     acceptedCount.value++;
     const dtMs = prevAcceptedRawFix ? fix.t - prevAcceptedRawFix.t : 0;
+    headingDeg.value = nextHeadingDeg(headingDeg.peek(), prevAcceptedRawFix, fix);
+    speedMs.value =
+      fix.spd && fix.spd > 0
+        ? fix.spd
+        : prevAcceptedRawFix && dtMs > 0
+          ? haversineM(prevAcceptedRawFix, fix) / (dtMs / 1000)
+          : 0;
     prevAcceptedRawFix = fix;
 
     if (state.value === 'acquiring') {
@@ -218,6 +232,8 @@ export function createDriveController(
     startedAtMs,
     distM,
     lastFix,
+    headingDeg,
+    speedMs,
     offRoute,
     offRouteM,
     errorMessage,

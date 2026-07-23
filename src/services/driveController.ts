@@ -10,6 +10,8 @@ export type DriveState = 'idle' | 'acquiring' | 'recording' | 'finished' | 'erro
 export interface DriveController {
   state: Signal<DriveState>;
   elapsedMs: Signal<number>;
+  /** Epoch ms of the first accepted fix that transitioned into 'recording'. */
+  startedAtMs: Signal<number | null>;
   distM: Signal<number>;
   lastFix: Signal<RawFix | null>;
   /** Only meaningful in route mode (route !== null). */
@@ -40,6 +42,7 @@ export function createDriveController(
 ): DriveController {
   const state = signal<DriveState>('idle');
   const elapsedMs = signal(0);
+  const startedAtMs = signal<number | null>(null);
   const distM = signal(0);
   const lastFix = signal<RawFix | null>(null);
   const offRoute = signal(false);
@@ -61,6 +64,7 @@ export function createDriveController(
 
     if (state.value === 'acquiring') {
       startedAt = fix.t;
+      startedAtMs.value = fix.t;
       state.value = 'recording';
       intervalId = setInterval(() => {
         elapsedMs.value = Date.now() - startedAt;
@@ -117,6 +121,7 @@ export function createDriveController(
   return {
     state,
     elapsedMs,
+    startedAtMs,
     distM,
     lastFix,
     offRoute,

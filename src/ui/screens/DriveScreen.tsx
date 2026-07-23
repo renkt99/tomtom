@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'preact/hooks';
 import { createDriveController, type DriveController } from '../../services/driveController';
 import { geolocationSource } from '../../services/geolocationSource';
-import { createRouteFromSeed, getRoute, saveRun } from '../../data/repo';
+import { createRouteFromSeed, getEtaForRoute, getRoute, saveRun } from '../../data/repo';
 import type { Route } from '../../core/types';
+import type { EtaBasis } from '../../core/eta';
 import { MapView } from '../map/MapView';
 import { navigate } from '../router';
-import { formatDurationMs } from '../format';
+import { formatClockTime, formatDurationMs, formatEtaBasis } from '../format';
 import { pendingRouteName } from './NewRoute';
 import { newBestFlashRunId } from './RouteDetail';
 
@@ -21,6 +22,11 @@ export function DriveScreen({ routeId }: DriveScreenProps) {
     routeId === null ? null : undefined
   );
   const [controller, setController] = useState<DriveController | null>(null);
+  const [etaAtMount, setEtaAtMount] = useState<{
+    etaMs: number;
+    basis: EtaBasis;
+    n: number;
+  } | null>(null);
 
   useEffect(() => {
     if (routeId === null) return;
@@ -32,6 +38,19 @@ export function DriveScreen({ routeId }: DriveScreenProps) {
       cancelled = true;
     };
   }, [routeId]);
+
+  useEffect(() => {
+    if (routeId === null || route == null) return;
+    let cancelled = false;
+    getEtaForRoute(routeId).then((eta) => {
+      if (!cancelled) setEtaAtMount(eta);
+    });
+    return () => {
+      cancelled = true;
+    };
+    // Mount-time snapshot only: fetch once when the route becomes available,
+    // not on every render.
+  }, [routeId, route != null]);
 
   useEffect(() => {
     if (routeId !== null && (route === undefined || route === null)) return;
@@ -90,6 +109,7 @@ export function DriveScreen({ routeId }: DriveScreenProps) {
   const offRoute = controller?.offRoute.value ?? false;
   const errorMessage = controller?.errorMessage.value ?? null;
   const lastFix = controller?.lastFix.value ?? null;
+  const startedAtMs = controller?.startedAtMs.value ?? null;
 
   let statusText: string;
   if (state === 'error') {
@@ -102,11 +122,22 @@ export function DriveScreen({ routeId }: DriveScreenProps) {
     statusText = 'finished';
   }
 
+  const showEta = routeId !== null && etaAtMount !== null && startedAtMs !== null;
+  const arrivalMs = showEta ? startedAtMs! + etaAtMount!.etaMs : null;
+
   return (
     <div class="drive-screen">
       <MapView routePolyline={route?.polyline} lastFix={lastFix} />
       <div class="drive-top-bar">
-        <div class="drive-timer">{formatDurationMs(elapsedMs)}</div>
+        <div class="drive-timer-col">
+          <div class="drive-timer">{formatDurationMs(elapsedMs)}</div>
+          {showEta && (
+            <div class="drive-eta-basis">
+              ETA {formatClockTime(arrivalMs!)} ·{' '}
+              {formatEtaBasis(etaAtMount!.basis, etaAtMount!.n)}
+            </div>
+          )}
+        </div>
         <div class="drive-status">{statusText}</div>
         <button class="btn btn-danger btn-small" onClick={handleStop}>
           Stop

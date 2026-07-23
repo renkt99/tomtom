@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
-import { createDriveController, type DriveController } from '../../services/driveController';
+import { createDriveController, type DriveController, type DriveStopResult } from '../../services/driveController';
 import { geolocationSource } from '../../services/geolocationSource';
 import { createSimulatedSource } from '../../services/simulatedSource';
+import { createWakeLock } from '../../services/wakeLock';
+import { requestPersistentStorage } from '../../services/storagePersist';
 import type { PositionSource } from '../../services/positionSource';
 import {
   createRouteFromSeed,
@@ -23,6 +25,9 @@ import {
 } from '../format';
 import { pendingRouteName } from './NewRoute';
 import { newBestFlashRunId } from './RouteDetail';
+
+/** Press-and-hold duration to trigger Stop, ms. */
+const HOLD_TO_STOP_MS = 800;
 
 export interface DriveScreenProps {
   /** null means seed mode (#/drive-new): no corridor matching, just record a new route. */
@@ -58,6 +63,16 @@ export function DriveScreen({ routeId, replayRunId }: DriveScreenProps) {
   // Fixes to drive a simulated source from, for demo/replay modes.
   const [simFixes, setSimFixes] = useState<RawFix[] | null>(null);
   const [simReady, setSimReady] = useState(!isDemo && !isReplay);
+
+  // Wake lock: one instance per mount. Acquired while acquiring/recording,
+  // released on finish/error/unmount. `lost` drives the subtle warning line.
+  const wakeLockRef = useRef<ReturnType<typeof createWakeLock> | null>(null);
+  if (wakeLockRef.current === null) wakeLockRef.current = createWakeLock();
+  const wakeLock = wakeLockRef.current;
+
+  // Hold-to-stop gesture state.
+  const [holding, setHolding] = useState(false);
+  const holdTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     if (routeId === null) return;
@@ -143,6 +158,65 @@ export function DriveScreen({ routeId, replayRunId }: DriveScreenProps) {
     };
   }, [isDemo, isReplay, replayRunId]);
 
+  /**
+   * Shared save path for a finished route-mode run, used both by the manual
+   * hold-to-stop gesture and by auto-stop firing. Seed mode (routeId ===
+   * null) never auto-stops (no route, so no detector), but this is reused
+   * for its manual stop too since the "not enough data" / navigate logic is
+   * identical.
+   */
+  async function finishAndSave(
+    rawFixes: RawFix[],
+    startedAt: number,
+    endedBy: 'manual' | 'auto'
+  ): Promise<void> {
+    if (rawFixes.length < 2) {
+      alert('No GPS data was recorded — nothing to save.');
+      navigate(routeId === null ? '#/' : `#/route/${routeId}`);
+      return;
+    }
+
+    if (routeId === null) {
+      const name = pendingRouteName.value || 'New route';
+      const newRoute = await createRouteFromSeed(name, rawFixes);
+      requestPersistentStorage();
+      navigate(`#/route/${newRoute.id}`);
+    } else {
+      const { run, isNewBest } = await saveRun(routeId, rawFixes, startedAt, endedBy);
+      requestPersistentStorage();
+      if (isNewBest) {
+        newBestFlashRunId.value = run.id;
+      }
+      navigate(`#/route/${routeId}`);
+    }
+  }
+
+  /**
+   * Replay drives never persist: stop the controller, surface the final
+   * delta vs best, and navigate back without saving. Used both for the Stop
+   * gesture (in replay mode) and for natural trace exhaustion (the simulated
+   * source running out of fixes).
+   */
+  function finishReplayDrive(): void {
+    const c = controllerRef.current;
+    if (!c) return;
+    const finalDeltaMs = c.deltaMs.value;
+    c.stop();
+
+    if (finalDeltaMs !== null) {
+      alert(`Finished ${formatDeltaMs(finalDeltaMs)} vs best`);
+    } else {
+      alert('Replay finished.');
+    }
+    navigate(`#/route/${routeId}`);
+  }
+
+  function handleAutoStop(result: DriveStopResult): void {
+    // Auto-stop is only ever wired for route mode, non-replay (see the
+    // controller-creation effect below) — replay/seed never reach here.
+    void finishAndSave(result.rawFixes, result.startedAt, 'auto');
+  }
+
   useEffect(() => {
     if (routeId !== null && (route === undefined || route === null)) return;
     if (!bestTraceReady) return;
@@ -168,61 +242,69 @@ export function DriveScreen({ routeId, replayRunId }: DriveScreenProps) {
     }
 
     const c = createDriveController(source, routeForController, bestTrace, {
-      timeScale: isDemo || isReplay ? simConfig.speedMult : 1
+      timeScale: isDemo || isReplay ? simConfig.speedMult : 1,
+      replay: isReplay,
+      onAutoStop: handleAutoStop
     });
     controllerRef.current = c;
     setController(c);
     c.start();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [routeId, route, controller, bestTraceReady, isDemo, isReplay, simReady, simFixes, bestTrace]);
 
-  /**
-   * Replay drives never persist: stop the controller, surface the final
-   * delta vs best, and navigate back without saving. Used both for the Stop
-   * button (in replay mode) and for natural trace exhaustion (the simulated
-   * source running out of fixes).
-   */
-  function finishReplayDrive(): void {
-    const c = controllerRef.current;
-    if (!c) return;
-    const finalDeltaMs = c.deltaMs.value;
-    c.stop();
-
-    if (finalDeltaMs !== null) {
-      alert(`Finished ${formatDeltaMs(finalDeltaMs)} vs best`);
+  // Wake lock: held while acquiring/recording, released otherwise. Released
+  // on unmount regardless of state (defensive — normal flow already
+  // releases via the state transition to 'finished'/'error' before we
+  // navigate away).
+  const driveState = controller?.state.value ?? 'acquiring';
+  useEffect(() => {
+    if (driveState === 'acquiring' || driveState === 'recording') {
+      void wakeLock.acquire();
     } else {
-      alert('Replay finished.');
+      void wakeLock.release();
     }
-    navigate(`#/route/${routeId}`);
+  }, [driveState, wakeLock]);
+
+  useEffect(() => {
+    return () => {
+      void wakeLock.release();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  function clearHoldTimer(): void {
+    if (holdTimerRef.current !== null) {
+      clearTimeout(holdTimerRef.current);
+      holdTimerRef.current = null;
+    }
   }
 
-  async function handleStop() {
+  function handleHoldStart(): void {
     if (!controller) return;
-    if (!confirm('Stop recording?')) return;
+    setHolding(true);
+    holdTimerRef.current = setTimeout(() => {
+      holdTimerRef.current = null;
+      setHolding(false);
+      performStop();
+    }, HOLD_TO_STOP_MS);
+  }
+
+  function handleHoldCancel(): void {
+    clearHoldTimer();
+    setHolding(false);
+  }
+
+  function performStop(): void {
+    const c = controllerRef.current;
+    if (!c) return;
 
     if (isReplay) {
       finishReplayDrive();
       return;
     }
 
-    const { rawFixes, startedAt } = controller.stop();
-
-    if (rawFixes.length < 2) {
-      alert('No GPS data was recorded — nothing to save.');
-      navigate(routeId === null ? '#/' : `#/route/${routeId}`);
-      return;
-    }
-
-    if (routeId === null) {
-      const name = pendingRouteName.value || 'New route';
-      const newRoute = await createRouteFromSeed(name, rawFixes);
-      navigate(`#/route/${newRoute.id}`);
-    } else {
-      const { run, isNewBest } = await saveRun(routeId, rawFixes, startedAt, 'manual');
-      if (isNewBest) {
-        newBestFlashRunId.value = run.id;
-      }
-      navigate(`#/route/${routeId}`);
-    }
+    const { rawFixes, startedAt } = c.stop();
+    void finishAndSave(rawFixes, startedAt, 'manual');
   }
 
   if (routeId !== null && route === undefined) {
@@ -241,14 +323,20 @@ export function DriveScreen({ routeId, replayRunId }: DriveScreenProps) {
     );
   }
 
-  const state = controller?.state.value ?? 'acquiring';
+  const state = driveState;
   const elapsedMs = controller?.elapsedMs.value ?? 0;
   const offRoute = controller?.offRoute.value ?? false;
+  const offRouteM = controller?.offRouteM.value ?? 0;
   const errorMessage = controller?.errorMessage.value ?? null;
   const lastFix = controller?.lastFix.value ?? null;
   const startedAtMs = controller?.startedAtMs.value ?? null;
   const ghostPos = controller?.ghostPos.value ?? null;
   const deltaMs = controller?.deltaMs.value ?? null;
+  const rawDeltaMs = controller?.rawDeltaMs.value ?? null;
+  const distM = controller?.distM.value ?? 0;
+  const acceptedCount = controller?.acceptedCount.value ?? 0;
+  const rejectedCount = controller?.rejectedCount.value ?? 0;
+  const wakeLockLost = wakeLock.lost.value;
 
   let statusText: string;
   if (state === 'error') {
@@ -285,13 +373,50 @@ export function DriveScreen({ routeId, replayRunId }: DriveScreenProps) {
             </div>
           )}
         </div>
-        <div class="drive-status">{statusText}</div>
-        <button class="btn btn-danger btn-small" onClick={handleStop}>
-          Stop
+        <div class="drive-status">
+          {statusText}
+          {state === 'recording' && wakeLockLost && (
+            <div class="wake-lock-warning">screen may sleep — keep the app open</div>
+          )}
+        </div>
+        <button
+          class={`hold-to-stop-btn ${holding ? 'holding' : ''}`}
+          onPointerDown={handleHoldStart}
+          onPointerUp={handleHoldCancel}
+          onPointerLeave={handleHoldCancel}
+          onPointerCancel={handleHoldCancel}
+        >
+          <span
+            class="hold-to-stop-fill"
+            style={{ transitionDuration: holding ? `${HOLD_TO_STOP_MS}ms` : '0ms' }}
+          />
+          <span class="hold-to-stop-label">hold to stop</span>
         </button>
       </div>
       {deltaMs !== null && (
         <div class={`delta-chip ${deltaClass}`}>{formatDeltaMs(deltaMs)}</div>
+      )}
+      {simConfig.debug && (
+        <div class="debug-panel">
+          <div>state: {state}</div>
+          <div>
+            fix:{' '}
+            {lastFix
+              ? `${lastFix.lat.toFixed(5)}, ${lastFix.lon.toFixed(5)} acc=${lastFix.acc.toFixed(0)}m spd=${(lastFix.spd ?? 0).toFixed(1)}m/s`
+              : '—'}
+          </div>
+          <div>
+            fixes ok/rej: {acceptedCount}/{rejectedCount}
+          </div>
+          <div>
+            distAlongM: {distM.toFixed(1)} offRouteM: {offRouteM.toFixed(1)}
+          </div>
+          <div>
+            delta raw/smoothed: {rawDeltaMs !== null ? rawDeltaMs.toFixed(0) : '—'} /{' '}
+            {deltaMs !== null ? deltaMs.toFixed(0) : '—'} ms
+          </div>
+          <div>ghost t: {elapsedMs.toFixed(0)} ms</div>
+        </div>
       )}
     </div>
   );

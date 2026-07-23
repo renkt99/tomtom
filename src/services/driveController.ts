@@ -4,10 +4,16 @@ import { computeDeltaMs, createEmaSmoother } from '../core/delta';
 import { haversineM } from '../core/geo';
 import { ghostPositionAt } from '../core/ghost';
 import { matchProgress, type ProgressHint } from '../core/progress';
+import { createAutoStopDetector, type AutoStopOpts } from '../core/autostop';
 import type { LatLon, RawFix, Route, TracePoint } from '../core/types';
 import type { PositionSource } from './positionSource';
 
 export type DriveState = 'idle' | 'acquiring' | 'recording' | 'finished' | 'error';
+
+export interface DriveStopResult {
+  rawFixes: RawFix[];
+  startedAt: number;
+}
 
 export interface DriveController {
   state: Signal<DriveState>;
@@ -18,11 +24,19 @@ export interface DriveController {
   lastFix: Signal<RawFix | null>;
   /** Only meaningful in route mode (route !== null). */
   offRoute: Signal<boolean>;
+  /** Numeric off-route distance, meters (route mode only; 0 in seed mode). */
+  offRouteM: Signal<number>;
   errorMessage: Signal<string | null>;
   /** Null when bestTrace is null, or before recording starts. */
   deltaMs: Signal<number | null>;
+  /** Delta before EMA smoothing — for the debug panel. */
+  rawDeltaMs: Signal<number | null>;
   /** Null when bestTrace is null, or before recording starts. */
   ghostPos: Signal<LatLon | null>;
+  /** Count of fixes accepted into the trace (debug panel). */
+  acceptedCount: Signal<number>;
+  /** Count of fixes rejected by acceptFix (debug panel). */
+  rejectedCount: Signal<number>;
   /**
    * Plain (non-signal) array of accumulated trace points, mutated in place
    * as fixes are accepted. Not reactive on its own — pair reads of it with
@@ -35,7 +49,32 @@ export interface DriveController {
    * this is what the repo layer (createRouteFromSeed / saveRun) expects.
    * The relative-time TracePoints in `trace` are for live display only.
    */
-  stop(): { rawFixes: RawFix[]; startedAt: number };
+  stop(): DriveStopResult;
+}
+
+export interface DriveControllerOpts {
+  /**
+   * Multiplier applied to wall-clock elapsed time between fixes. Leave at
+   * 1 for real drives. For simulated playback at N× (where the source
+   * emits synthesized timestamps with original intervals on a compressed
+   * wall schedule), pass N so the ticker's display/ghost updates advance
+   * in drive-time between fix arrivals.
+   */
+  timeScale?: number;
+  /**
+   * True for replay drives (route mode, playing back a stored run):
+   * auto-stop is disabled — a replay always runs to the end of its fixed
+   * fixture rather than detecting arrival.
+   */
+  replay?: boolean;
+  /** Override the default auto-stop thresholds (route mode, non-replay only). */
+  autoStopOpts?: AutoStopOpts;
+  /**
+   * Called when auto-stop fires (route mode, non-replay, while recording):
+   * the controller has already set state to 'finished' and stopped the
+   * source by the time this is called. Receives the same shape as stop().
+   */
+  onAutoStop?(result: DriveStopResult): void;
 }
 
 /**
@@ -46,16 +85,7 @@ export function createDriveController(
   source: PositionSource,
   route: Route | null,
   bestTrace: TracePoint[] | null = null,
-  opts: {
-    /**
-     * Multiplier applied to wall-clock elapsed time between fixes. Leave at
-     * 1 for real drives. For simulated playback at N× (where the source
-     * emits synthesized timestamps with original intervals on a compressed
-     * wall schedule), pass N so the ticker's display/ghost updates advance
-     * in drive-time between fix arrivals.
-     */
-    timeScale?: number;
-  } = {}
+  opts: DriveControllerOpts = {}
 ): DriveController {
   const timeScale = opts.timeScale ?? 1;
   const state = signal<DriveState>('idle');
@@ -64,9 +94,13 @@ export function createDriveController(
   const distM = signal(0);
   const lastFix = signal<RawFix | null>(null);
   const offRoute = signal(false);
+  const offRouteM = signal(0);
   const errorMessage = signal<string | null>(null);
   const deltaMs = signal<number | null>(null);
+  const rawDeltaMs = signal<number | null>(null);
   const ghostPos = signal<LatLon | null>(null);
+  const acceptedCount = signal(0);
+  const rejectedCount = signal(0);
 
   const trace: TracePoint[] = [];
   const rawFixes: RawFix[] = [];
@@ -79,8 +113,25 @@ export function createDriveController(
   let intervalId: ReturnType<typeof setInterval> | null = null;
   const deltaSmoother = createEmaSmoother(0.3);
 
+  const autoStop =
+    route && !opts.replay ? createAutoStopDetector(route, opts.autoStopOpts) : null;
+
+  function stopInternal(): DriveStopResult {
+    source.stop();
+    if (intervalId !== null) {
+      clearInterval(intervalId);
+      intervalId = null;
+    }
+    state.value = 'finished';
+    return { rawFixes, startedAt };
+  }
+
   function onFix(fix: RawFix): void {
-    if (!acceptFix(prevAcceptedRawFix, fix)) return;
+    if (!acceptFix(prevAcceptedRawFix, fix)) {
+      rejectedCount.value++;
+      return;
+    }
+    acceptedCount.value++;
     prevAcceptedRawFix = fix;
 
     if (state.value === 'acquiring') {
@@ -100,6 +151,7 @@ export function createDriveController(
     if (route) {
       hint = matchProgress({ lat: fix.lat, lon: fix.lon }, route, hint);
       d = hint.distAlongM;
+      offRouteM.value = hint.offRouteM;
       offRoute.value = hint.offRouteM > route.corridorM;
     } else {
       if (prevSeedFix) {
@@ -128,8 +180,15 @@ export function createDriveController(
     const elapsed = fix.t - startedAt;
     elapsedMs.value = elapsed;
     if (bestTrace) {
-      deltaMs.value = deltaSmoother.next(computeDeltaMs(elapsed, d, bestTrace));
+      const raw = computeDeltaMs(elapsed, d, bestTrace);
+      rawDeltaMs.value = raw;
+      deltaMs.value = deltaSmoother.next(raw);
       ghostPos.value = ghostPositionAt(bestTrace, elapsed);
+    }
+
+    if (autoStop && state.value === 'recording' && autoStop.next(fix, d)) {
+      const result = stopInternal();
+      opts.onAutoStop?.(result);
     }
   }
 
@@ -143,14 +202,8 @@ export function createDriveController(
     source.start(onFix, onError);
   }
 
-  function stop(): { rawFixes: RawFix[]; startedAt: number } {
-    source.stop();
-    if (intervalId !== null) {
-      clearInterval(intervalId);
-      intervalId = null;
-    }
-    state.value = 'finished';
-    return { rawFixes, startedAt };
+  function stop(): DriveStopResult {
+    return stopInternal();
   }
 
   return {
@@ -160,9 +213,13 @@ export function createDriveController(
     distM,
     lastFix,
     offRoute,
+    offRouteM,
     errorMessage,
     deltaMs,
+    rawDeltaMs,
     ghostPos,
+    acceptedCount,
+    rejectedCount,
     trace,
     start,
     stop

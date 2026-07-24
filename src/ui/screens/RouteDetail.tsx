@@ -4,6 +4,8 @@ import { deleteRoute, deleteRun, getRoute, getRuns, renameRoute } from '../../da
 import type { Route, Run } from '../../core/types';
 import { navigate } from '../router';
 import { formatDateTime, formatDurationMs } from '../format';
+import { ScreenHeader } from '../components/ScreenHeader';
+import { WarningIcon } from '../components/icons';
 
 /**
  * Transient in-memory flag: DriveScreen sets this to the just-saved run's id
@@ -20,6 +22,7 @@ export function RouteDetail({ id }: RouteDetailProps) {
   const [route, setRoute] = useState<Route | null>(null);
   const [runs, setRuns] = useState<Run[] | null>(null);
   const [showNewBest, setShowNewBest] = useState(false);
+  const [expandedRunId, setExpandedRunId] = useState<string | null>(null);
 
   async function load() {
     const [r, rs] = await Promise.all([getRoute(id), getRuns(id)]);
@@ -70,9 +73,7 @@ export function RouteDetail({ id }: RouteDetailProps) {
     <div class="screen">
       {showNewBest ? <div class="banner banner-success">New best!</div> : null}
 
-      <h1 class="tap-target" onClick={handleRename}>
-        {currentRoute.name}
-      </h1>
+      <ScreenHeader backHash="#/" title={currentRoute.name} onTitleClick={handleRename} />
 
       <div class="route-detail-meta">
         {bestRun
@@ -90,25 +91,36 @@ export function RouteDetail({ id }: RouteDetailProps) {
       ) : (
         <div class="run-list">
           {runs.map((run) => (
-            <div class="run-row" key={run.id}>
-              <div class="run-row-main">
-                <span>{formatDateTime(run.startedAt)}</span>
-                <span>{formatDurationMs(run.durationMs)}</span>
-                {!run.valid ? (
-                  <span class="warning-icon" title={run.reasons.join(', ')}>
-                    ⚠
-                  </span>
-                ) : null}
+            <div class="run-item" key={run.id}>
+              <div class="run-row">
+                <div class="run-row-main">
+                  <span>{formatDateTime(run.startedAt)}</span>
+                  <span>{formatDurationMs(run.durationMs)}</span>
+                  {!run.valid ? (
+                    <button
+                      class="icon-btn warning-icon"
+                      aria-label="Run invalid — show reasons"
+                      onClick={() =>
+                        setExpandedRunId(expandedRunId === run.id ? null : run.id)
+                      }
+                    >
+                      <WarningIcon />
+                    </button>
+                  ) : null}
+                </div>
+                <button
+                  class="btn btn-secondary btn-small"
+                  onClick={() => navigate(`#/drive/${currentRoute.id}?replay=${run.id}`)}
+                >
+                  Replay
+                </button>
+                <button class="btn btn-danger btn-small" onClick={() => handleDeleteRun(run.id)}>
+                  Delete
+                </button>
               </div>
-              <button
-                class="btn btn-secondary btn-small"
-                onClick={() => navigate(`#/drive/${currentRoute.id}?replay=${run.id}`)}
-              >
-                Replay
-              </button>
-              <button class="btn btn-danger btn-small" onClick={() => handleDeleteRun(run.id)}>
-                Delete
-              </button>
+              {expandedRunId === run.id && !run.valid ? (
+                <div class="run-reasons">{run.reasons.join(', ')}</div>
+              ) : null}
             </div>
           ))}
         </div>

@@ -4,6 +4,7 @@ import type { Route } from '../../core/types';
 import type { EtaBasis } from '../../core/eta';
 import { navigate } from '../router';
 import { formatDurationMs, formatEtaMinutes } from '../format';
+import { GearIcon } from '../components/icons';
 
 interface StatsRow {
   route: Route;
@@ -30,7 +31,7 @@ export function RouteList() {
       <div class="screen-header">
         <h1>TomTom</h1>
         <a class="link settings-link" href="#/settings" aria-label="Settings" title="Settings">
-          ⚙
+          <GearIcon />
         </a>
       </div>
       {rows === null ? (

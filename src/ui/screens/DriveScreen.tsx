@@ -17,6 +17,7 @@ import type { EtaBasis } from '../../core/eta';
 import { MapView } from '../map/MapView';
 import { navigate } from '../router';
 import { simConfig } from '../sim';
+import { WarningIcon } from '../components/icons';
 import {
   formatClockTime,
   formatDeltaMs,
@@ -385,23 +386,40 @@ export function DriveScreen({ routeId, replayRunId }: DriveScreenProps) {
         <div class="drive-status">
           {statusText}
           {state === 'recording' && wakeLockLost && (
-            <div class="wake-lock-warning">screen may sleep — keep the app open</div>
+            <div class="wake-lock-warning">
+              <WarningIcon />
+              screen may sleep — keep the app open
+            </div>
           )}
         </div>
-        <button
-          class={`hold-to-stop-btn ${holding ? 'holding' : ''}`}
-          onPointerDown={handleHoldStart}
-          onPointerUp={handleHoldCancel}
-          onPointerLeave={handleHoldCancel}
-          onPointerCancel={handleHoldCancel}
-        >
-          <span
-            class="hold-to-stop-fill"
-            style={{ transitionDuration: holding ? `${HOLD_TO_STOP_MS}ms` : '0ms' }}
-          />
-          <span class="hold-to-stop-label">hold to stop</span>
-        </button>
+        {state !== 'error' && (
+          <button
+            class={`hold-to-stop-btn ${holding ? 'holding' : ''}`}
+            onPointerDown={handleHoldStart}
+            onPointerUp={handleHoldCancel}
+            onPointerLeave={handleHoldCancel}
+            onPointerCancel={handleHoldCancel}
+          >
+            <span
+              class="hold-to-stop-fill"
+              style={{ transitionDuration: holding ? `${HOLD_TO_STOP_MS}ms` : '0ms' }}
+            />
+            <span class="hold-to-stop-label">hold to stop</span>
+          </button>
+        )}
       </div>
+      {state === 'error' && (
+        <div class="drive-error-card">
+          <WarningIcon />
+          <div class="drive-error-message">{errorMessage ?? 'Something went wrong getting your location.'}</div>
+          <button
+            class="btn btn-secondary"
+            onClick={() => navigate(routeId === null ? '#/' : `#/route/${routeId}`)}
+          >
+            Go back
+          </button>
+        </div>
+      )}
       {deltaMs !== null && (
         <div class={`delta-chip ${deltaClass}`}>{formatDeltaMs(deltaMs)}</div>
       )}

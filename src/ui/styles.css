@@ -1,5 +1,22 @@
 :root {
   color-scheme: dark;
+
+  --bg: #0b0d10;
+  --surface: #14171c;
+  --surface-2: #1f242c;
+  --border: #2a2e35;
+  --text: #e6e8eb;
+  --text-muted: #9aa3ad;
+  --accent: #3b82f6;
+  --accent-light: #60a5fa;
+  --danger: #ef4444;
+  --warning: #f59e0b;
+  --success: #22c55e;
+  --ghost: #8b5cf6;
+  --overlay: rgba(11, 13, 16, 0.85);
+  --radius-sm: 8px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
 }
 
 * {
@@ -11,8 +28,8 @@ body {
   margin: 0;
   padding: 0;
   height: 100%;
-  background: #0b0d10;
-  color: #e6e8eb;
+  background: var(--bg);
+  color: var(--text);
   font-family:
     -apple-system,
     BlinkMacSystemFont,
@@ -38,7 +55,7 @@ body {
 }
 
 .link {
-  color: #60a5fa;
+  color: var(--accent-light);
   text-decoration: none;
   font-weight: 600;
 }
@@ -83,8 +100,8 @@ body {
   margin-top: 0.75rem;
   padding: 0.4rem 0.9rem;
   border-radius: 999px;
-  background: rgba(11, 13, 16, 0.85);
-  color: #e6e8eb;
+  background: var(--overlay);
+  color: var(--text);
   font-size: 0.85rem;
   font-weight: 600;
   white-space: nowrap;
@@ -103,14 +120,46 @@ h1 {
   gap: 0.75rem;
 }
 
+.icon-btn {
+  width: 44px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  color: var(--text);
+  padding: 0;
+  margin-left: -10px;
+  cursor: pointer;
+}
+
+.icon-btn svg {
+  width: 24px;
+  height: 24px;
+}
+
+/* Reused outside the header (e.g. the run-row invalid-reason toggle), where
+   the header's optical-alignment nudge doesn't apply. */
+.run-row .icon-btn {
+  margin-left: 0;
+}
+
+.header-spacer {
+  width: 34px;
+}
+
 .settings-link {
-  font-size: 1.3rem;
-  line-height: 1;
   min-width: 44px;
   min-height: 44px;
   display: flex;
   align-items: center;
   justify-content: center;
+}
+
+.settings-link svg {
+  width: 22px;
+  height: 22px;
 }
 
 h2 {
@@ -126,17 +175,17 @@ h2 {
   width: 100%;
   min-height: 44px;
   padding: 0.6rem 0.8rem;
-  border-radius: 10px;
-  border: 1px solid #2a2e35;
-  background: #14171c;
-  color: #e6e8eb;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
   font-size: 1rem;
 }
 
 .btn {
   min-height: 44px;
   padding: 0.6rem 1rem;
-  border-radius: 10px;
+  border-radius: var(--radius-md);
   border: none;
   font-size: 1rem;
   font-weight: 600;
@@ -149,24 +198,24 @@ h2 {
 }
 
 .btn-primary {
-  background: #3b82f6;
+  background: var(--accent);
   color: #08111f;
 }
 
 .btn-secondary {
-  background: #1f242c;
-  color: #e6e8eb;
-  border: 1px solid #2a2e35;
+  background: var(--surface-2);
+  color: var(--text);
+  border: 1px solid var(--border);
 }
 
 .btn-danger {
-  background: #ef4444;
+  background: var(--danger);
   color: #1a0a0a;
 }
 
 .btn-small {
-  min-height: 36px;
-  padding: 0.4rem 0.75rem;
+  min-height: 44px;
+  padding: 0.25rem 0.75rem;
   font-size: 0.85rem;
 }
 
@@ -185,9 +234,9 @@ h2 {
   align-items: center;
   gap: 0.75rem;
   padding: 0.9rem 1rem;
-  border-radius: 12px;
-  background: #14171c;
-  border: 1px solid #2a2e35;
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  border: 1px solid var(--border);
 }
 
 .route-card-main {
@@ -206,12 +255,12 @@ h2 {
 }
 
 .route-card-meta {
-  color: #9aa3ad;
+  color: var(--text-muted);
   font-size: 0.85rem;
 }
 
 .route-detail-meta {
-  color: #9aa3ad;
+  color: var(--text-muted);
   font-size: 0.9rem;
 }
 
@@ -221,14 +270,19 @@ h2 {
   gap: 0.5rem;
 }
 
+.run-item {
+  display: flex;
+  flex-direction: column;
+}
+
 .run-row {
   display: flex;
   align-items: center;
   gap: 0.75rem;
   padding: 0.6rem 0.8rem;
-  border-radius: 10px;
-  background: #14171c;
-  border: 1px solid #2a2e35;
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  border: 1px solid var(--border);
 }
 
 .run-row-main {
@@ -240,20 +294,58 @@ h2 {
 }
 
 .warning-icon {
-  color: #f59e0b;
+  color: var(--warning);
+}
+
+.run-reasons {
+  font-size: 0.85rem;
+  color: var(--warning);
+  padding: 0.35rem 0.75rem 0;
 }
 
 .banner {
   padding: 0.6rem 0.9rem;
-  border-radius: 10px;
+  border-radius: var(--radius-md);
   font-weight: 600;
   text-align: center;
 }
 
 .banner-success {
   background: rgba(34, 197, 94, 0.15);
-  color: #22c55e;
+  color: var(--success);
   border: 1px solid rgba(34, 197, 94, 0.4);
+}
+
+.drive-error-card {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 1000;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.6rem;
+  width: calc(100% - 2.5rem);
+  max-width: 320px;
+  padding: 1.25rem;
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--text);
+  text-align: center;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
+}
+
+.drive-error-card svg {
+  width: 32px;
+  height: 32px;
+  color: var(--warning);
+}
+
+.drive-error-message {
+  font-size: 0.95rem;
+  color: var(--text);
 }
 
 .drive-screen {
@@ -274,8 +366,8 @@ h2 {
   gap: 0.75rem;
   margin-top: 0.75rem;
   padding: 0.6rem 0.9rem;
-  border-radius: 14px;
-  background: rgba(11, 13, 16, 0.85);
+  border-radius: var(--radius-lg);
+  background: var(--overlay);
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
 }
 
@@ -298,7 +390,7 @@ h2 {
 
 .drive-status {
   flex: 1;
-  color: #9aa3ad;
+  color: var(--text-muted);
   font-size: 0.9rem;
 }
 
@@ -309,8 +401,8 @@ h2 {
   transform: translateX(-50%);
   z-index: 1000;
   padding: 0.5rem 1.25rem;
-  border-radius: 16px;
-  background: rgba(11, 13, 16, 0.85);
+  border-radius: var(--radius-lg);
+  background: var(--overlay);
   font-variant-numeric: tabular-nums;
   font-size: 2rem;
   font-weight: 700;
@@ -323,9 +415,9 @@ h2 {
   bottom: calc(env(safe-area-inset-bottom, 0.75rem) + 1.25rem);
   z-index: 1000;
   padding: 0.5rem 1rem;
-  border-radius: 16px;
-  background: rgba(11, 13, 16, 0.85);
-  color: #e6e8eb;
+  border-radius: var(--radius-lg);
+  background: var(--overlay);
+  color: var(--text);
   font-variant-numeric: tabular-nums;
   font-size: 1.4rem;
   font-weight: 700;
@@ -333,21 +425,47 @@ h2 {
 }
 
 .delta-ahead {
-  color: #22c55e;
+  color: var(--success);
 }
 
 .delta-behind {
-  color: #ef4444;
+  color: var(--danger);
 }
 
 .delta-neutral {
-  color: #9aa3ad;
+  color: var(--text-muted);
 }
 
 .wake-lock-warning {
-  color: #f59e0b;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  color: var(--warning);
+  background: rgba(245, 158, 11, 0.15);
+  border: 1px solid rgba(245, 158, 11, 0.4);
+  border-radius: var(--radius-sm);
+  padding: 2px 8px;
   font-size: 0.75rem;
   margin-top: 0.15rem;
+  animation: warn-pulse 0.9s ease-out 2;
+}
+
+.wake-lock-warning svg {
+  width: 12px;
+  height: 12px;
+  flex: none;
+}
+
+@keyframes warn-pulse {
+  0% {
+    transform: scale(1);
+  }
+  40% {
+    transform: scale(1.06);
+  }
+  100% {
+    transform: scale(1);
+  }
 }
 
 .hold-to-stop-btn {
@@ -355,10 +473,10 @@ h2 {
   overflow: hidden;
   min-height: 44px;
   padding: 0.6rem 1rem;
-  border-radius: 10px;
+  border-radius: var(--radius-md);
   border: 1px solid rgba(239, 68, 68, 0.6);
   background: rgba(239, 68, 68, 0.15);
-  color: #ef4444;
+  color: var(--danger);
   font-size: 0.85rem;
   font-weight: 600;
   cursor: pointer;
@@ -394,12 +512,12 @@ h2 {
   right: 0.5rem;
   z-index: 1100;
   background: rgba(11, 13, 16, 0.75);
-  color: #9aa3ad;
+  color: var(--text-muted);
   font-family: 'SF Mono', SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 0.65rem;
   line-height: 1.35;
   padding: 0.4rem 0.6rem;
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   max-width: 60vw;
   pointer-events: none;
 }
@@ -416,9 +534,9 @@ h2 {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(11, 13, 16, 0.85);
-  color: #e6e8eb;
-  border: 1px solid #2a2e35;
+  background: var(--overlay);
+  color: var(--text);
+  border: 1px solid var(--border);
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
   padding: 0;
 }
@@ -435,7 +553,7 @@ h2 {
 }
 
 .compass-heading-up {
-  border-color: #3b82f6;
+  border-color: var(--accent);
 }
 
 /* While heading-up is active (or a bearing animation runs), rAF owns the

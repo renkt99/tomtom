@@ -3,6 +3,7 @@ import { exportAll, importAll } from '../../data/exportImport';
 import { getSetting, setSetting } from '../../data/db';
 import { isStoragePersisted, requestPersistentStorage } from '../../services/storagePersist';
 import packageJson from '../../../package.json';
+import { ScreenHeader } from '../components/ScreenHeader';
 
 const LAST_BACKUP_KEY = 'lastBackupAt';
 
@@ -85,7 +86,7 @@ export function Settings() {
 
   return (
     <div class="screen">
-      <h1>Settings</h1>
+      <ScreenHeader backHash="#/" title="Settings" />
 
       <h2>Backup</h2>
       <p class="route-detail-meta">Last backup: {formatBackupAge(lastBackupAt)}</p>
@@ -131,10 +132,6 @@ export function Settings() {
         .
       </p>
       <p class="route-detail-meta">TomTom v{packageJson.version}</p>
-
-      <a class="link" href="#/">
-        Back
-      </a>
     </div>
   );
 }

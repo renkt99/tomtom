@@ -13,6 +13,7 @@
     "@preact/signals": "^2.9.4",
     "dexie": "^4.4.4",
     "leaflet": "^1.9.4",
+    "leaflet-rotate": "0.2.8",
     "preact": "^10.29.7"
   },
   "devDependencies": {

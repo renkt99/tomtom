@@ -403,3 +403,43 @@ h2 {
   max-width: 60vw;
   pointer-events: none;
 }
+
+/* Compass toggle (north-up <-> heading-up), bottom-left above the speed chip. */
+.compass-btn {
+  position: absolute;
+  left: 0.75rem;
+  bottom: calc(env(safe-area-inset-bottom, 0.75rem) + 5.25rem);
+  z-index: 1000;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(11, 13, 16, 0.85);
+  color: #e6e8eb;
+  border: 1px solid #2a2e35;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
+  padding: 0;
+}
+
+.compass-btn svg {
+  width: 24px;
+  height: 24px;
+  display: block;
+}
+
+.compass-btn .compass-n {
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+.compass-heading-up {
+  border-color: #3b82f6;
+}
+
+/* While heading-up is active (or a bearing animation runs), rAF owns the
+   car's counter-rotation — the CSS transition must not fight it. */
+.car-marker-inner.car-rotate-live {
+  transition: none;
+}

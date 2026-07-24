@@ -370,6 +370,7 @@ export function DriveScreen({ routeId, replayRunId }: DriveScreenProps) {
         lastFix={lastFix}
         ghostPos={ghostPos}
         headingDeg={headingDeg}
+        trail={routeId === null ? controller?.trace : undefined}
       />
       <div class="drive-top-bar">
         <div class="drive-timer-col">

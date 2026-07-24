@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'preact/hooks';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { shortestArcDelta } from '../../core/heading';
-import type { LatLon, RawFix } from '../../core/types';
+import type { LatLon, RawFix, TracePoint } from '../../core/types';
 
 const TILE_URL = 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png';
 const ATTRIBUTION =
@@ -40,6 +40,13 @@ export interface MapViewProps {
   ghostPos?: LatLon | null;
   /** Current display heading, degrees 0-360 (0 = north). Null/undefined leaves the marker's rotation unchanged. */
   headingDeg?: number | null;
+  /**
+   * Live trail of the driven path (seed mode only). WARNING: this is the
+   * drive controller's live trace array, MUTATED IN PLACE — its identity
+   * never changes, so updates must be cued by `lastFix` changing rather than
+   * by this array reference.
+   */
+  trail?: TracePoint[];
 }
 
 /**
@@ -49,13 +56,15 @@ export interface MapViewProps {
  * status pill. Does not touch navigator.geolocation — callers
  * (driveController) own the position stream and pass fixes in as props.
  */
-export function MapView({ routePolyline, lastFix, statusText, ghostPos, headingDeg }: MapViewProps) {
+export function MapView({ routePolyline, lastFix, statusText, ghostPos, headingDeg, trail }: MapViewProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<L.Map | null>(null);
   const routeLayerRef = useRef<L.Polyline | null>(null);
   const markerRef = useRef<L.Marker | null>(null);
   const accuracyCircleRef = useRef<L.Circle | null>(null);
   const ghostRef = useRef<L.CircleMarker | null>(null);
+  const trailRef = useRef<L.Polyline | null>(null);
+  const trailLenRef = useRef(0);
   const hasFitRef = useRef(false);
   // Accumulated rotation degrees (unbounded, not wrapped to 0-360) so the
   // CSS transition always takes the short way around via shortestArcDelta.
@@ -82,6 +91,8 @@ export function MapView({ routePolyline, lastFix, statusText, ghostPos, headingD
       markerRef.current = null;
       accuracyCircleRef.current = null;
       ghostRef.current = null;
+      trailRef.current = null;
+      trailLenRef.current = 0;
       hasFitRef.current = false;
     };
   }, []);
@@ -108,6 +119,25 @@ export function MapView({ routePolyline, lastFix, statusText, ghostPos, headingD
       hasFitRef.current = true;
     }
   }, [routePolyline]);
+
+  // Draw the live trail behind the car (seed mode only). `trail` is the
+  // controller's trace array, mutated in place, so we cue off `lastFix`
+  // changing rather than off `trail`'s (unchanging) identity, and append
+  // only the points added since the last render for O(1) work per fix.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !trail) return;
+
+    if (!trailRef.current) {
+      trailRef.current = L.polyline([], { color: '#06b6d4', weight: 4, opacity: 0.9 }).addTo(map);
+      trailLenRef.current = 0;
+    }
+
+    for (let i = trailLenRef.current; i < trail.length; i++) {
+      trailRef.current.addLatLng([trail[i].lat, trail[i].lon]);
+    }
+    trailLenRef.current = trail.length;
+  }, [trail, lastFix]);
 
   // Render/update the car marker + accuracy circle from lastFix.
   useEffect(() => {

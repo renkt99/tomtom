@@ -282,35 +282,31 @@ to change, where, and how to prove it done.
 
 ### UX-001 — Give the geolocation-denied state actionable copy and a labeled exit
 
-- **Status:** open · **Severity:** med · **Date:** 2026-07-23
+- **Status:** fixed · **Severity:** med · **Date:** 2026-07-24
 - **Location:** `src/services/geolocationSource.ts:24-26` (raw `err.message` passed through); `src/ui/screens/DriveScreen.tsx:342-343` (status pill)
 - **Problem:** A denied permission surfaces the browser's raw non-localized error text in the status pill with no guidance and no retry path; the only escape is the hold-to-stop button, which reads as "stop recording", then alerts "No GPS data was recorded". First-run users hitting the iOS permission prompt wrong get a dead end.
-- **Goal:** Branch on `err.code`: for `PERMISSION_DENIED` show actionable copy (enable in iOS Settings → Privacy → Location Services) and a clearly labeled "Go back" affordance in the error state; keep raw text only as a fallback detail.
-- **Done when:** Simulated `PERMISSION_DENIED` shows the guidance and a labeled exit; `npm test` green (error-copy mapping unit-testable).
+- **Resolution:** Added `describeGeoError(code, raw)` in `geolocationSource.ts`, branching on `err.code` (1/2/3) to actionable copy with the raw message as a fallback; `DriveScreen` now renders a `.drive-error-card` overlay (icon + message + labeled "Go back" button navigating to the list/route) in the error state and hides the hold-to-stop button there. Covered by `geolocationSource.test.ts`. PR #10.
 
 ### UX-002 — Make invalid-run reasons reachable on touch devices
 
-- **Status:** open · **Severity:** med · **Date:** 2026-07-23
+- **Status:** fixed · **Severity:** med · **Date:** 2026-07-24
 - **Location:** `src/ui/screens/RouteDetail.tsx:98-100` `.warning-icon`
 - **Problem:** The ⚠ icon exposes `run.reasons` only via a `title` attribute; `title` tooltips never fire on tap in mobile Safari, so on the app's target platform the reason a run was flagged invalid is unreachable.
-- **Goal:** Make the icon tappable (inline expand or small popover showing `reasons`), or render the reasons as always-visible secondary text on the run row; include an `aria-label`.
-- **Done when:** Reasons are readable by tap (or always visible) on a touch device; verified manually or by component test.
+- **Resolution:** The ⚠ span is now `button.icon-btn.warning-icon` with `aria-label="Run invalid — show reasons"`, toggling a per-run `expandedRunId` state that renders reasons inline in a `.run-reasons` div under the row. PR #10.
 
 ### UX-003 — Raise the run-row Replay/Delete touch targets to 44px
 
-- **Status:** open · **Severity:** low · **Date:** 2026-07-23
+- **Status:** fixed · **Severity:** low · **Date:** 2026-07-24
 - **Location:** `src/ui/styles.css:148-152` `.btn-small`; used at `src/ui/screens/RouteDetail.tsx:103-111`
 - **Problem:** `.btn-small` is `min-height: 36px` while every other interactive element in the app uses 44px; Replay and Delete sit adjacent with the standard 12px gap, so miss-tolerance is worst exactly where a destructive action lives. Mitigated by the `confirm()` gate on delete.
-- **Goal:** Raise `.btn-small` to `min-height: 44px` (adjust padding/typography to keep the row compact) or widen the gap between Replay and Delete.
-- **Done when:** Both buttons measure ≥44px tall; visual check of the run rows.
+- **Resolution:** `.btn-small` raised to `min-height: 44px` with vertical padding reduced (`0.25rem 0.75rem`) to keep run rows compact. PR #10.
 
 ### UX-004 — Give the wake-lock warning visual weight matching its urgency
 
-- **Status:** open · **Severity:** low · **Date:** 2026-07-23
+- **Status:** fixed · **Severity:** low · **Date:** 2026-07-24
 - **Location:** `src/ui/styles.css:313-317` `.wake-lock-warning`; rendered `src/ui/screens/DriveScreen.tsx:378-380`
 - **Problem:** "screen may sleep — keep the app open" demands driver action but renders as a single static 12px amber line with no icon, pulse, or haptic cue, nested under the primary status word. Contrast is fine (7.75–9:1); weight is the issue.
-- **Goal:** Add a small icon and a brief one-time pulse/highlight when the warning first appears (no persistent animation — driver distraction).
-- **Done when:** The warning visibly announces itself on first appearance in a manual check; copy and calm styling otherwise unchanged.
+- **Resolution:** `.wake-lock-warning` is now an amber chip (background/border/radius) with a `WarningIcon`, plus a finite two-cycle `warn-pulse` scale animation on mount (no infinite animation). PR #10.
 
 ## BLD — Build/Packaging
 

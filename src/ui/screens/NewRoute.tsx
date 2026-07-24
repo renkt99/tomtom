@@ -1,6 +1,7 @@
 import { signal } from '@preact/signals';
 import { useState } from 'preact/hooks';
 import { navigate } from '../router';
+import { ScreenHeader } from '../components/ScreenHeader';
 
 /** Name entered here is carried over to DriveScreen's seed-mode save step. */
 export const pendingRouteName = signal('');
@@ -18,7 +19,7 @@ export function NewRoute() {
 
   return (
     <div class="screen">
-      <h1>New route</h1>
+      <ScreenHeader backHash="#/" title="New route" />
       <input
         class="text-input"
         type="text"
@@ -29,9 +30,6 @@ export function NewRoute() {
       <button class="btn btn-primary" disabled={!canStart} onClick={handleStart}>
         Record this route by driving it
       </button>
-      <a class="link" href="#/">
-        Cancel
-      </a>
     </div>
   );
 }

@@ -1,5 +1,6 @@
-import { useEffect, useRef } from 'preact/hooks';
+import { useEffect, useRef, useState } from 'preact/hooks';
 import L from 'leaflet';
+import 'leaflet-rotate';
 import 'leaflet/dist/leaflet.css';
 import { shortestArcDelta } from '../../core/heading';
 import type { LatLon, RawFix, TracePoint } from '../../core/types';
@@ -32,6 +33,12 @@ const CAR_ICON = L.divIcon({
   iconAnchor: [15, 15]
 });
 
+/** localStorage key persisting the compass orientation preference. */
+const HEADING_UP_KEY = 'tomtom.headingUp';
+
+/** How long a bearing ease takes: mode toggles and per-fix follow turns. */
+const BEARING_ANIM_MS = 550;
+
 export interface MapViewProps {
   routePolyline?: LatLon[];
   lastFix?: RawFix | null;
@@ -53,8 +60,10 @@ export interface MapViewProps {
  * Purely presentational map: draws the route polyline (if given), renders a
  * car marker + accuracy circle from `lastFix` (rotated per `headingDeg`), a
  * translucent ghost marker from `ghostPos`, and shows `statusText` in a
- * status pill. Does not touch navigator.geolocation — callers
- * (driveController) own the position stream and pass fixes in as props.
+ * status pill. A compass button toggles north-up vs heading-up (map rotated
+ * so the direction of travel points up, via leaflet-rotate). Does not touch
+ * navigator.geolocation — callers (driveController) own the position stream
+ * and pass fixes in as props.
  */
 export function MapView({ routePolyline, lastFix, statusText, ghostPos, headingDeg, trail }: MapViewProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -70,12 +79,92 @@ export function MapView({ routePolyline, lastFix, statusText, ghostPos, headingD
   // CSS transition always takes the short way around via shortestArcDelta.
   const displayedHeadingRef = useRef(0);
 
+  // --- Orientation (north-up vs heading-up) state ---------------------------
+  const [headingUp, setHeadingUp] = useState(
+    () => localStorage.getItem(HEADING_UP_KEY) === '1'
+  );
+  const headingUpRef = useRef(headingUp);
+  /** Latest heading prop value, readable from animation callbacks. */
+  const lastHeadingRef = useRef<number | null>(null);
+  /** Currently displayed map bearing (continuous degrees, not wrapped). */
+  const displayedBearingRef = useRef(0);
+  const bearingRafRef = useRef(0);
+  const needleRef = useRef<SVGSVGElement | null>(null);
+
+  /** Rotate the car's inner div so it points along its heading ON SCREEN.
+   * Screen rotation = compass heading + current map bearing (leaflet-rotate
+   * keeps the marker root screen-upright; in heading-up mode bearing is
+   * -heading, so this settles at 0 = car pointing up). */
+  function syncCarRotation(): void {
+    const heading = lastHeadingRef.current;
+    if (heading === null) return;
+    const el = markerRef.current?.getElement()?.firstElementChild as HTMLElement | null;
+    if (!el) return;
+    const screenDeg = heading + displayedBearingRef.current;
+    const cur = displayedHeadingRef.current;
+    displayedHeadingRef.current =
+      cur + shortestArcDelta(((cur % 360) + 360) % 360, ((screenDeg % 360) + 360) % 360);
+    el.style.transform = `rotate(${displayedHeadingRef.current}deg)`;
+  }
+
+  /** Set the map bearing + dependent visuals (car counter-rotation, needle). */
+  function applyBearing(bearingDeg: number): void {
+    displayedBearingRef.current = bearingDeg;
+    mapRef.current?.setBearing(bearingDeg);
+    syncCarRotation();
+    if (needleRef.current) {
+      needleRef.current.style.transform = `rotate(${bearingDeg}deg)`;
+    }
+  }
+
+  /** Ease the map bearing to `target` (shortest arc, easeOutQuad). While the
+   * animation runs, the car's CSS transition is suspended so the per-frame
+   * counter-rotation doesn't fight it. */
+  function animateBearingTo(target: number): void {
+    cancelAnimationFrame(bearingRafRef.current);
+    const from = displayedBearingRef.current;
+    const delta = shortestArcDelta(((from % 360) + 360) % 360, ((target % 360) + 360) % 360);
+    if (delta === 0) {
+      applyBearing(from);
+      return;
+    }
+    const carEl = markerRef.current?.getElement()?.firstElementChild as HTMLElement | null;
+    carEl?.classList.add('car-rotate-live');
+    const t0 = performance.now();
+    const step = (now: number): void => {
+      const k = Math.min(1, (now - t0) / BEARING_ANIM_MS);
+      const eased = k * (2 - k);
+      applyBearing(from + delta * eased);
+      if (k < 1) {
+        bearingRafRef.current = requestAnimationFrame(step);
+      } else if (!headingUpRef.current) {
+        // Animation done and back in north-up: let CSS own car rotation again.
+        carEl?.classList.remove('car-rotate-live');
+      }
+    };
+    bearingRafRef.current = requestAnimationFrame(step);
+  }
+
+  function toggleHeadingUp(): void {
+    const next = !headingUpRef.current;
+    headingUpRef.current = next;
+    setHeadingUp(next);
+    localStorage.setItem(HEADING_UP_KEY, next ? '1' : '0');
+    animateBearingTo(next ? -(lastHeadingRef.current ?? 0) : 0);
+  }
+
   // Mount the map once.
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
 
-    const map = L.map(container).setView(DEFAULT_CENTER, DEFAULT_ZOOM);
+    const map = L.map(container, {
+      rotate: true,
+      bearing: 0,
+      touchRotate: false,
+      shiftKeyRotate: false,
+      rotateControl: false
+    }).setView(DEFAULT_CENTER, DEFAULT_ZOOM);
     mapRef.current = map;
 
     L.tileLayer(TILE_URL, {
@@ -85,6 +174,7 @@ export function MapView({ routePolyline, lastFix, statusText, ghostPos, headingD
     }).addTo(map);
 
     return () => {
+      cancelAnimationFrame(bearingRafRef.current);
       map.remove();
       mapRef.current = null;
       routeLayerRef.current = null;
@@ -94,6 +184,7 @@ export function MapView({ routePolyline, lastFix, statusText, ghostPos, headingD
       trailRef.current = null;
       trailLenRef.current = 0;
       hasFitRef.current = false;
+      displayedBearingRef.current = 0;
     };
   }, []);
 
@@ -170,19 +261,27 @@ export function MapView({ routePolyline, lastFix, statusText, ghostPos, headingD
     }
   }, [lastFix]);
 
-  // Rotate the car marker's inner div to face headingDeg, accumulating via
-  // shortest-arc so the CSS transition never spins the long way around.
+  // React to a new heading: in heading-up mode ease the map bearing so the
+  // travel direction points up (the car counter-rotates each frame inside
+  // applyBearing); in north-up mode just rotate the car via its CSS
+  // transition, accumulating shortest-arc so it never spins the long way.
   useEffect(() => {
     if (headingDeg == null) return;
-    const marker = markerRef.current;
-    if (!marker) return;
-    const el = marker.getElement()?.firstElementChild as HTMLElement | null;
-    if (!el) return;
-
-    const cur = displayedHeadingRef.current;
-    displayedHeadingRef.current = cur + shortestArcDelta(((cur % 360) + 360) % 360, headingDeg);
-    el.style.transform = `rotate(${displayedHeadingRef.current}deg)`;
+    lastHeadingRef.current = headingDeg;
+    if (headingUpRef.current) {
+      animateBearingTo(-headingDeg);
+    } else {
+      syncCarRotation();
+    }
   }, [headingDeg]);
+
+  // Keep the car's CSS transition suspended for as long as heading-up is
+  // active (rAF owns its rotation there), and kick the initial rotation if
+  // the mode was restored from localStorage before the marker existed.
+  useEffect(() => {
+    const el = markerRef.current?.getElement()?.firstElementChild as HTMLElement | null;
+    el?.classList.toggle('car-rotate-live', headingUp);
+  }, [headingUp, lastFix]);
 
   // Render/move/remove the translucent ghost marker from ghostPos.
   useEffect(() => {
@@ -216,6 +315,25 @@ export function MapView({ routePolyline, lastFix, statusText, ghostPos, headingD
     <div class="map-screen">
       <div ref={containerRef} class="map-container" />
       {statusText ? <div class="status-pill">{statusText}</div> : null}
+      <button
+        class={`compass-btn${headingUp ? ' compass-heading-up' : ''}`}
+        aria-label={headingUp ? 'Switch to north-up' : 'Switch to heading-up'}
+        onClick={toggleHeadingUp}
+      >
+        {headingUp ? (
+          <svg
+            ref={needleRef}
+            viewBox="0 0 24 24"
+            xmlns="http://www.w3.org/2000/svg"
+            style={{ transform: `rotate(${displayedBearingRef.current}deg)` }}
+          >
+            <path d="M12 2 L16 12 L12 10 L8 12 Z" fill="#ef4444" />
+            <path d="M12 22 L8 12 L12 14 L16 12 Z" fill="#9aa3ad" />
+          </svg>
+        ) : (
+          <span class="compass-n">N</span>
+        )}
+      </button>
     </div>
   );
 }

@@ -70,6 +70,39 @@ describe('createDriveController', () => {
     }
   });
 
+  it('accumulates one TracePoint per accepted fix, matching lat/lon in order (plumbing contract for MapView trail)', () => {
+    vi.useFakeTimers();
+    try {
+      const polyline = [
+        { lat: 40, lon: -74 },
+        { lat: 40.002, lon: -74.002 }
+      ];
+      const fixes = makeTrace(polyline, { speedMs: 10, hz: 1, noiseM: 0 });
+
+      const source = new StubPositionSource();
+      const controller = createDriveController(source, null);
+      controller.start();
+
+      const accepted: RawFix[] = [];
+      for (const f of fixes) {
+        const before = controller.trace.length;
+        source.push(f);
+        if (controller.trace.length > before) accepted.push(f);
+      }
+
+      expect(accepted.length).toBeGreaterThan(1);
+      expect(controller.trace.length).toBe(accepted.length);
+      controller.trace.forEach((tp, i) => {
+        expect(tp.lat).toBe(accepted[i].lat);
+        expect(tp.lon).toBe(accepted[i].lon);
+      });
+
+      controller.stop();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('goes to the error state and exposes the error message on source error', () => {
     const source: PositionSource = {
       start(_cb, onError) {
